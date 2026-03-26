@@ -42,7 +42,6 @@ import com.limelight.preferences.PreferenceConfiguration;
 import com.limelight.profiles.ProfilesManager;
 import com.limelight.ui.ExternalControllerView;
 import com.limelight.ui.GameGestures;
-import com.limelight.ui.LocalCursorOverlayView;
 import com.limelight.ui.StreamContainer;
 import com.limelight.utils.Dialog;
 import com.limelight.utils.ExternalDisplayControlActivity;
@@ -202,10 +201,6 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
     private int modifierFlags = 0;
     private boolean grabbedInput = true;
     private boolean cursorVisible = false;
-    private LocalCursorOverlayView localCursorOverlayView;
-    private boolean localCursorOverlayEnabled = false;
-    private float localCursorX = 0;
-    private float localCursorY = 0;
     private boolean isPanZoomMode = false;
     private boolean synthClickPending = false;
     private boolean pointerSwiping = false;
@@ -469,8 +464,6 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
         streamContainer.setCommitTextEnabled(prefConfig.enableCommitText);
 
         rootView = streamContainer.getParent();
-
-        initLocalCursorOverlay();
 
         //串流画面 顶部居中显示
         if(prefConfig.alignDisplayTopCenter){
@@ -1887,7 +1880,6 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
         setMetaKeyCaptureState(grab);
 
         grabbedInput = grab;
-        updateLocalCursorVisibility();
     }
 
     private final Runnable toggleGrab = new Runnable() {
@@ -1896,80 +1888,6 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
             setInputGrabState(!grabbedInput);
         }
     };
-
-    private void initLocalCursorOverlay() {
-        if (!(rootView instanceof FrameLayout)) {
-            return;
-        }
-
-        FrameLayout parent = (FrameLayout) rootView;
-        localCursorOverlayView = new LocalCursorOverlayView(this);
-        localCursorOverlayView.setLayoutParams(new FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT,
-                FrameLayout.LayoutParams.MATCH_PARENT));
-        localCursorOverlayView.setVisibility(View.GONE);
-        parent.addView(localCursorOverlayView);
-
-        localCursorOverlayEnabled = isOnExternalDisplay();
-    }
-
-    private void toggleLocalCursorOverlay() {
-        localCursorOverlayEnabled = !localCursorOverlayEnabled;
-        if (!localCursorOverlayEnabled) {
-            if (localCursorOverlayView != null) {
-                localCursorOverlayView.setVisibility(View.GONE);
-            }
-            Toast.makeText(this, getString(R.string.local_cursor_overlay_disabled), Toast.LENGTH_SHORT).show();
-            return;
-        }
-
-        if (localCursorX == 0 && localCursorY == 0 && streamContainer != null) {
-            localCursorX = streamContainer.getWidth() / 2f;
-            localCursorY = streamContainer.getHeight() / 2f;
-        }
-
-        updateLocalCursorVisibility();
-        updateLocalCursorPosition(localCursorX, localCursorY);
-        Toast.makeText(this, getString(R.string.local_cursor_overlay_enabled), Toast.LENGTH_SHORT).show();
-    }
-
-    private void updateLocalCursorVisibility() {
-        if (localCursorOverlayView == null) {
-            return;
-        }
-
-        boolean visible = localCursorOverlayEnabled && grabbedInput;
-        localCursorOverlayView.setVisibility(visible ? View.VISIBLE : View.GONE);
-    }
-
-    private void updateLocalCursorFromRelativeDelta(float deltaX, float deltaY) {
-        if (streamContainer == null || streamContainer.getWidth() == 0 || streamContainer.getHeight() == 0) {
-            return;
-        }
-
-        if (localCursorX == 0 && localCursorY == 0) {
-            localCursorX = streamContainer.getWidth() / 2f;
-            localCursorY = streamContainer.getHeight() / 2f;
-        }
-
-        updateLocalCursorPosition(localCursorX + deltaX, localCursorY + deltaY);
-    }
-
-    private void updateLocalCursorPosition(float x, float y) {
-        if (streamContainer == null || streamContainer.getWidth() == 0 || streamContainer.getHeight() == 0) {
-            return;
-        }
-
-        localCursorX = Math.min(Math.max(0, x), streamContainer.getWidth());
-        localCursorY = Math.min(Math.max(0, y), streamContainer.getHeight());
-
-        if (localCursorOverlayView != null && localCursorOverlayEnabled) {
-            localCursorOverlayView.setCursorPosition(
-                    streamContainer.getX() + localCursorX,
-                    streamContainer.getY() + localCursorY);
-            updateLocalCursorVisibility();
-        }
-    }
 
     // Returns true if the key stroke was consumed
     private boolean handleSpecialKeys(int androidKeyCode, boolean down) {
@@ -2043,11 +1961,6 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
                         }
                         break;
 
-                    // Toggle local cursor overlay
-                    case KeyEvent.KEYCODE_V:
-                        toggleLocalCursorOverlay();
-                        break;
-
                     default:
                         break;
                 }
@@ -2065,7 +1978,6 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
                 case KeyEvent.KEYCODE_Z:
                 case KeyEvent.KEYCODE_Q:
                 case KeyEvent.KEYCODE_C:
-                case KeyEvent.KEYCODE_V:
                     // Remember that a special key combo was activated, so we can consume all key
                     // events until the modifiers come up
                     specialKeyCode = androidKeyCode;
@@ -2923,8 +2835,6 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
                         else {
                             conn.sendMouseMove(deltaX, deltaY);
                         }
-
-                        updateLocalCursorFromRelativeDelta(deltaX, deltaY);
                     }
                 }
                 else if ((eventSource & InputDevice.SOURCE_CLASS_POSITION) != 0) {
@@ -3489,8 +3399,6 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
         eventX = Math.min(Math.max(eventX, 0), streamContainer.getWidth());
         eventY = Math.min(Math.max(eventY, 0), streamContainer.getHeight());
 
-        updateLocalCursorPosition(eventX, eventY);
-
         conn.sendMousePosition((short)eventX, (short)eventY, (short) streamContainer.getWidth(), (short) streamContainer.getHeight());
     }
 
@@ -3939,7 +3847,6 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
     @Override
     public void mouseMove(int deltaX, int deltaY) {
         conn.sendMouseMove((short) deltaX, (short) deltaY);
-        updateLocalCursorFromRelativeDelta(deltaX, deltaY);
     }
 
     @Override
@@ -4235,7 +4142,6 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
             inputCaptureProvider.enableCapture();
             grabbedInput = true;
         }
-        updateLocalCursorVisibility();
         cursorVisible = !cursorVisible;
         if (cursorVisible) {
             inputCaptureProvider.showCursor();
