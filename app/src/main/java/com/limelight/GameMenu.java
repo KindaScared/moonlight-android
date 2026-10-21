@@ -12,6 +12,9 @@ import android.view.View;
 import android.view.ViewTreeObserver;
 import android.view.Window;
 import android.widget.ArrayAdapter;
+import android.widget.LinearLayout;
+import android.widget.SeekBar;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import com.limelight.binding.input.GameInputDevice;
@@ -264,11 +267,90 @@ public class GameMenu implements Game.GameMenuCallbacks {
         }));
 
         options.add(new MenuOption(getString(R.string.game_menu_switch_touch_sensitivity_model), true, game::switchTouchSensitivity));
+
+        // UI navigation action: open a sub-dialog, so do not re-grab game focus.
+        options.add(new MenuOption(getString(R.string.game_menu_local_cursor_speed), () -> {
+            hideMenu();
+            showLocalCursorSpeedDialog();
+        }));
         if (device != null) {
             options.addAll(device.getGameMenuOptions());
         }
         options.add(new MenuOption(getString(R.string.game_menu_cancel), null));
         showMenuDialog(getString(R.string.game_menu_advanced), options.toArray(new MenuOption[options.size()]));
+    }
+
+    // Mirrors the StreamSettings SeekBarPreference for the local cursor pointer speed:
+    // stored as integer hundredths (20-300 => 0.2x-3.0x), step 10, divisor 100.
+    private void showLocalCursorSpeedDialog() {
+        final int min = 20;
+        final int max = 300;
+        final int step = 10;
+        final int divisor = 100;
+        final int current = game.getLocalCursorSpeedHundredths();
+
+        int themeResId = game.getApplicationInfo().theme;
+        Context themedContext = new ContextThemeWrapper(dialogScreenContext, themeResId);
+
+        LinearLayout layout = new LinearLayout(themedContext);
+        layout.setOrientation(LinearLayout.VERTICAL);
+        layout.setPadding(6, 6, 6, 6);
+
+        final TextView valueText = new TextView(themedContext);
+        valueText.setGravity(android.view.Gravity.CENTER_HORIZONTAL);
+        valueText.setTextSize(32);
+        valueText.setText(formatSpeedLabel(current, divisor));
+        layout.addView(valueText);
+
+        final SeekBar seekBar = new SeekBar(themedContext);
+        seekBar.setMax(max - min);
+        seekBar.setKeyProgressIncrement(step);
+        seekBar.setProgress(current - min);
+
+        seekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar sb, int progress, boolean fromUser) {
+                int value = progress + min;
+                if (value < min) {
+                    sb.setProgress(0);
+                    value = min;
+                }
+                int rounded = Math.round((float) value / step) * step;
+                if (rounded != value) {
+                    sb.setProgress(rounded - min);
+                }
+                valueText.setText(formatSpeedLabel(Math.max(rounded, min), divisor));
+            }
+
+            @Override
+            public void onStartTrackingTouch(SeekBar sb) {}
+
+            @Override
+            public void onStopTrackingTouch(SeekBar sb) {}
+        });
+
+        layout.addView(seekBar, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
+
+        AlertDialog.Builder builder = new AlertDialog.Builder(themedContext);
+        builder.setTitle(getString(R.string.title_local_cursor_speed));
+        builder.setView(layout);
+        builder.setPositiveButton(android.R.string.ok, (dialog, which) -> {
+            int value = seekBar.getProgress() + min;
+            int rounded = Math.round((float) value / step) * step;
+            if (rounded < min) {
+                rounded = min;
+            } else if (rounded > max) {
+                rounded = max;
+            }
+            game.applyLocalCursorSpeedMultiplier(rounded);
+        });
+        builder.setNegativeButton(getString(R.string.cancel), (dialog, which) -> dialog.dismiss());
+        builder.show();
+    }
+
+    private static String formatSpeedLabel(int hundredths, int divisor) {
+        return String.format(java.util.Locale.US, "%.1f", hundredths / (float) divisor).concat(" x");
     }
 
     private void showServerCmd(ArrayList<String> serverCmds) {

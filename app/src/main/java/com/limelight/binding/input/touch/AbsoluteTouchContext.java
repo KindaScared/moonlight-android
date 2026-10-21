@@ -50,6 +50,7 @@ public class AbsoluteTouchContext implements TouchContext {
     private final int actionIndex;
     private final View targetView;
     private final Handler handler;
+    private final CursorPositionListener positionListener;
 
     private final Runnable leftButtonUpRunnable = new Runnable() {
         @Override
@@ -69,12 +70,14 @@ public class AbsoluteTouchContext implements TouchContext {
     private static final int TOUCH_DOWN_DEAD_ZONE_TIME_THRESHOLD = 100;
     private static final int TOUCH_DOWN_DEAD_ZONE_DISTANCE_THRESHOLD = 20;
 
-    public AbsoluteTouchContext(NvConnection conn, int actionIndex, View view, boolean swapped)
+    public AbsoluteTouchContext(NvConnection conn, int actionIndex, View view, boolean swapped,
+                                CursorPositionListener positionListener)
     {
         this.conn = conn;
         this.actionIndex = actionIndex;
         this.targetView = view;
         this.handler = new Handler(Looper.getMainLooper());
+        this.positionListener = positionListener;
 
         if (swapped) {
             buttonPrimary = MouseButtonPacket.BUTTON_RIGHT;
@@ -105,6 +108,12 @@ public class AbsoluteTouchContext implements TouchContext {
         lastTouchDownTime = eventTime;
         cancelled = confirmedTap = confirmedLongPress = false;
 
+        // Move the client-side cursor to the touched point immediately so the overlay
+        // tracks touch and the host cursor does not teleport on touch -> mouse handoff.
+        if (positionListener != null) {
+            positionListener.onCursorPosition(eventX, eventY);
+        }
+
         if (actionIndex == 0) {
             // Start the timers
             startTapDownTimer();
@@ -127,6 +136,11 @@ public class AbsoluteTouchContext implements TouchContext {
         eventY = Math.min(Math.max(eventY, 0), targetView.getHeight());
 
         conn.sendMousePosition((short)eventX, (short)eventY, (short)targetView.getWidth(), (short)targetView.getHeight());
+
+        // Keep the client-side overlay in sync with the absolute position we just sent.
+        if (positionListener != null) {
+            positionListener.onCursorPosition(eventX, eventY);
+        }
     }
 
     @Override

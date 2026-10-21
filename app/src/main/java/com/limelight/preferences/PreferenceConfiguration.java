@@ -431,6 +431,9 @@ public class PreferenceConfiguration {
     //物理光标捕获
     public boolean enableMouseLocalCursor;
 
+    // Local cursor pointer speed multiplier (0.2x - 3.0x). 1.0 = no acceleration.
+    public float localCursorSpeedMultiplier = 1.0f;
+
     public boolean enableMultiTouchGestures;
 
     //禁用内置的特殊指令
@@ -1132,6 +1135,8 @@ public class PreferenceConfiguration {
         config.enableTouchSensitivity=prefs.getBoolean("checkbox_enable_touch_sensitivity",false);
 
         config.enableMouseLocalCursor=prefs.getBoolean("checkbox_mouse_local_cursor",false);
+
+        config.localCursorSpeedMultiplier = prefs.getInt("seekbar_local_cursor_speed", 100) / 100f;
 
         config.enableMultiTouchGestures = prefs.getBoolean("checkbox_multi_touch_gestures", false);
 

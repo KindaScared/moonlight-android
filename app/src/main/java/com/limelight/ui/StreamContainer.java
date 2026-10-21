@@ -55,6 +55,8 @@ public class StreamContainer extends FrameLayout implements SurfaceHolder.Callba
 
     private boolean isSurfaceReady = false;
 
+    private CursorOverlayView cursorOverlay;
+
     public StreamContainer(Context context, AttributeSet attrs) {
         super(context, attrs);
 
@@ -97,6 +99,16 @@ public class StreamContainer extends FrameLayout implements SurfaceHolder.Callba
         if (mSurfaceView.getHolder().getSurface() != null && mSurfaceView.getHolder().getSurface().isValid()) {
             surfaceChanged(mSurfaceView.getHolder(), PixelFormat.RGBA_8888, mSurfaceView.getWidth(), mSurfaceView.getHeight());
         }
+
+        // The client-side cursor overlay is added last so it is the topmost child.
+        // A SurfaceView's surface renders behind the view hierarchy, so this View
+        // draws on top of the streamed video.
+        cursorOverlay = new CursorOverlayView(context);
+        addView(cursorOverlay, childParams);
+    }
+
+    public CursorOverlayView getCursorOverlay() {
+        return cursorOverlay;
     }
 
     // --- Aspect Ratio and Scaling Logic ---

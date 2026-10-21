@@ -570,6 +570,18 @@
             android:title="@string/title_checkbox_mouse_local_cursor"
             app:iconSpaceReserved="false" />
 
+        <com.limelight.preferences.SeekBarPreference
+            android:defaultValue="100"
+            android:key="seekbar_local_cursor_speed"
+            android:max="300"
+            android:summary="@string/summary_local_cursor_speed"
+            android:text="x"
+            android:title="@string/title_local_cursor_speed"
+            app:iconSpaceReserved="false"
+            seekbar:divisor="100"
+            seekbar:min="20"
+            seekbar:step="10" />
+
         <CheckBoxPreference
             android:defaultValue="false"
             android:key="checkbox_multi_touch_gestures"
