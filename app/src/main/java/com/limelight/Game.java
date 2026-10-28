@@ -2415,13 +2415,21 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
 
     @Override
     public boolean handleKeyDown(KeyEvent event) {
+        return handleKeyDown(event, false);
+    }
+
+    // allowSynthetic lets the app's own on-screen keyboards send trusted synthetic
+    // KeyEvents (deviceId 0) even when the user has chosen to ignore externally
+    // generated synthetic events ("Ignore synthetic events"). Everything else
+    // (special-key combos, modifiers, translation, sending) is unchanged.
+    private boolean handleKeyDown(KeyEvent event, boolean allowSynthetic) {
         // Pass-through virtual navigation keys
         if ((event.getFlags() & KeyEvent.FLAG_VIRTUAL_HARD_KEY) != 0) {
             return false;
         }
 
         int deviceId = event.getDeviceId();
-        if (prefConfig.ignoreSynthEvents && deviceId <= 0) {
+        if (!allowSynthetic && prefConfig.ignoreSynthEvents && deviceId <= 0) {
             return false;
         }
 
@@ -2506,13 +2514,19 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
 
     @Override
     public boolean handleKeyUp(KeyEvent event) {
+        return handleKeyUp(event, false);
+    }
+
+    // See handleKeyDown(KeyEvent, boolean): allowSynthetic exempts the app's own
+    // on-screen keyboards from the "ignore synthetic events" filter only.
+    private boolean handleKeyUp(KeyEvent event, boolean allowSynthetic) {
         // Pass-through virtual navigation keys
         if ((event.getFlags() & KeyEvent.FLAG_VIRTUAL_HARD_KEY) != 0) {
             return false;
         }
 
         int deviceId = event.getDeviceId();
-        if (prefConfig.ignoreSynthEvents && deviceId <= 0) {
+        if (!allowSynthetic && prefConfig.ignoreSynthEvents && deviceId <= 0) {
             return false;
         }
 
@@ -2789,10 +2803,32 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
     public void toggleKeyboard() {
         if (isOnExternalDisplay()) {
             ExternalDisplayControlActivity.toggleKeyboard();
+            return;
+        }
+
+        LimeLog.info("Toggling keyboard overlay");
+        if (streamContainer == null) {
+            return;
+        }
+
+        final InputMethodManager inputManager =
+                (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
+        if (inputManager == null) {
+            return;
+        }
+
+        // Ensure the stream view is the focused IME target before asking the system to
+        // show the keyboard. The Quick Settings dialog temporarily owns window focus, so
+        // without restoring focus here the IME request has no reliable text-editor target
+        // and the soft keyboard never appears.
+        streamContainer.setFocusableInTouchMode(true);
+        streamContainer.requestFocus();
+
+        if (inputManager.isAcceptingText()) {
+            inputManager.hideSoftInputFromWindow(streamContainer.getWindowToken(), 0);
         } else {
-            LimeLog.info("Toggling keyboard overlay");
-            InputMethodManager inputManager = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
-            inputManager.toggleSoftInput(0, 0);
+            streamContainer.post(() ->
+                    inputManager.showSoftInput(streamContainer, InputMethodManager.SHOW_IMPLICIT));
         }
     }
 
@@ -4369,6 +4405,28 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
                 return handleKeyMultiple(keyEvent);
             default:
                 return false;
+        }
+    }
+
+    // Trusted entry point for the app's own on-screen keyboards (the full QWERTY
+    // layout and the special-key overlay). Their KeyEvents are synthetic (deviceId 0),
+    // so they must bypass the "ignore synthetic events" filter while still honouring
+    // special-key combos, modifiers and key translation. Physical/IME events continue
+    // to go through onKey()/handleKeyDown()/handleKeyUp() and remain subject to that
+    // filter.
+    public void handleOnScreenKeyboardEvent(KeyEvent keyEvent) {
+        switch (keyEvent.getAction()) {
+            case KeyEvent.ACTION_DOWN:
+                handleKeyDown(keyEvent, true);
+                break;
+            case KeyEvent.ACTION_UP:
+                handleKeyUp(keyEvent, true);
+                break;
+            case KeyEvent.ACTION_MULTIPLE:
+                handleKeyMultiple(keyEvent);
+                break;
+            default:
+                break;
         }
     }
 

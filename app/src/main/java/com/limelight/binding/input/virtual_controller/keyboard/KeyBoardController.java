@@ -371,7 +371,9 @@ public class KeyBoardController {
         if (keyEvent.getSource() == 1) {
             Game.instance.mouseButtonEvent(keyEvent.getKeyCode(), KeyEvent.ACTION_DOWN == keyEvent.getAction());
         } else {
-            Game.instance.onKey(null, keyEvent.getKeyCode(), keyEvent);
+            // Use the trusted on-screen keyboard path so these synthetic events are not
+            // dropped by the "ignore synthetic events" preference.
+            Game.instance.handleOnScreenKeyboardEvent(keyEvent);
         }
 
         if (keyEvent.getSource() != 2) {

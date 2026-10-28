@@ -167,6 +167,12 @@ public class StreamContainer extends FrameLayout implements SurfaceHolder.Callba
 
     public void setCommitTextEnabled(boolean enabled) {
         this.commitTextEnabled = enabled;
+        if (enabled) {
+            // Make this view an IME target so the soft keyboard can actually be shown.
+            // This mirrors the behaviour of StreamView.setCommitTextEnabled().
+            setFocusableInTouchMode(true);
+            requestFocus();
+        }
     }
 
     @Override
