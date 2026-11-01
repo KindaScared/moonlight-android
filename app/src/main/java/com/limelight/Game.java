@@ -254,6 +254,12 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
     private CursorOverlayView cursorOverlay;
     private final LocalCursorState localCursorState = new LocalCursorState();
 
+    // Bounded retry so the local cursor is synchronized with the host once the stream
+    // surface has valid dimensions (it may still be zero-size immediately after connect).
+    private static final int LOCAL_CURSOR_SYNC_MAX_ATTEMPTS = 20;
+    private static final long LOCAL_CURSOR_SYNC_RETRY_DELAY_MS = 250;
+    private int localCursorSyncAttempts = 0;
+
     // Keeps the client-side overlay synced with absolute touch input so the host cursor
     // does not teleport when switching from touch to mouse.
     private final TouchContext.CursorPositionListener localCursorTouchListener =
@@ -2199,17 +2205,23 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
                 (short) width, (short) height);
     }
 
-    // Toggles the client-side cursor overlay via the Ctrl+Alt+Shift+V combo (see
-    // handleSpecialKeys). Enabling the overlay hides the native Android pointer and
-    // snaps the host cursor to the same absolute coordinate. Disabling the overlay only
+    // Applies the requested client-side cursor overlay state idempotently. Activation side
+    // effects (input capture, hiding the native Android pointer, enabling the overlay) run
+    // only when the state actually changes, so repeated calls with the same value never
+    // re-run them. Host synchronization is intentionally NOT done here so callers can
+    // resync on a (re)connection even when the enabled state is unchanged
+    // (see applyAutoEnableLocalCursor).
+    //
+    // Enabling the overlay hides the native Android pointer. Disabling the overlay only
     // hides the client-side sprite; it must not restore the native Android pointer,
     // because that is reserved for Ctrl+Alt+Shift+C. We deliberately do not send any
     // combo to the host to hide/show its cursor: the Moonlight/Sunshine protocol exposes
     // no way to read the host cursor's current visibility, so doing so blindly could
     // desync the host cursor.
-    private void toggleLocalCursor() {
-        boolean enable = !localCursorState.isEnabled();
-        localCursorState.setEnabled(enable);
+    private void setLocalCursorEnabled(boolean enable) {
+        if (!localCursorState.setEnabledIfChanged(enable)) {
+            return;
+        }
 
         if (enable) {
             if (!grabbedInput && inputCaptureProvider != null) {
@@ -2225,13 +2237,72 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
             if (cursorOverlay != null) {
                 cursorOverlay.setOverlayEnabled(true);
             }
-
-            syncLocalCursorToHost();
         } else {
             if (cursorOverlay != null) {
                 cursorOverlay.setOverlayEnabled(false);
             }
         }
+    }
+
+    // Toggles the client-side cursor overlay via the Ctrl+Alt+Shift+V combo (see
+    // handleSpecialKeys). Behavior is identical to before: flipping to enabled also snaps
+    // the host cursor to the same absolute coordinate.
+    private void toggleLocalCursor() {
+        boolean enable = !localCursorState.isEnabled();
+        setLocalCursorEnabled(enable);
+
+        if (enable) {
+            syncLocalCursorToHost();
+            scheduleLocalCursorHostSync();
+        }
+    }
+
+    // Applies the auto-enable-local-cursor preference when a stream starts or resumes.
+    // When enabled, this guarantees the overlay is enabled, input capture is configured,
+    // and the local cursor position is synchronized with the host -- even on a
+    // reconnection where the enabled state did not change. When disabled, the overlay is
+    // ensured hidden without disturbing native Android pointer handling.
+    private void applyAutoEnableLocalCursor() {
+        boolean autoEnable = prefConfig != null && prefConfig.autoEnableLocalCursor;
+
+        // Fresh sync budget for this (re)connection.
+        localCursorSyncAttempts = 0;
+
+        setLocalCursorEnabled(autoEnable);
+
+        if (localCursorState.isEnabled()) {
+            // Always resync on a (re)connection and retry once the stream surface has
+            // valid dimensions (syncLocalCursorToHost is a no-op while it is zero-size).
+            syncLocalCursorToHost();
+            scheduleLocalCursorHostSync();
+        }
+    }
+
+    // Ensures the local cursor is synchronized with the host even when the stream surface
+    // is not laid out yet at the time of the initial attempt. Bounded so it can never loop
+    // indefinitely; stops as soon as a valid position is established.
+    private void scheduleLocalCursorHostSync() {
+        if (!localCursorState.isEnabled() || !connected) {
+            return;
+        }
+        if (localCursorState.isPositionValid()) {
+            return;
+        }
+        if (localCursorSyncAttempts >= LOCAL_CURSOR_SYNC_MAX_ATTEMPTS) {
+            return;
+        }
+
+        localCursorSyncAttempts++;
+        timerHandler.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                if (!localCursorState.isEnabled() || !connected) {
+                    return;
+                }
+                syncLocalCursorToHost();
+                scheduleLocalCursorHostSync();
+            }
+        }, LOCAL_CURSOR_SYNC_RETRY_DELAY_MS);
     }
 
     // Persists and applies the local cursor pointer speed multiplier live (no restart).
@@ -4137,6 +4208,7 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
                     @Override
                     public void run() {
                         setInputGrabState(true);
+                        applyAutoEnableLocalCursor();
                     }
                 }, 500);
 

@@ -463,6 +463,8 @@
     <string name="summary_checkbox_mouse_local_cursor">Default external physical mouse cursor will be captured, this option can display Android system cursor</string>
     <string name="title_local_cursor_speed">Local cursor pointer speed</string>
     <string name="summary_local_cursor_speed">Pointer speed multiplier for the local cursor (mouse acceleration). Higher moves the cursor further per mouse movement.</string>
+    <string name="title_auto_enable_local_cursor">Automatically enable local cursor</string>
+    <string name="summary_auto_enable_local_cursor">Automatically enable the local cursor when a streaming session starts or resumes.</string>
     <string name="title_checkbox_multi_touch_gestures">Enable multi-touch gestures</string>
     <string name="summary_checkbox_multi_touch_gestures">Enable 3 finger tap for keyboard, 4 finger tap for full keyboard, 5 finger tap for quick menu when using multi-touch mode.</string>
     <string name="title_checkbox_onscreen_style_official">Official Virtual Gamepad Skin</string>

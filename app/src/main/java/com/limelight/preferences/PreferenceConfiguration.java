@@ -434,6 +434,9 @@ public class PreferenceConfiguration {
     // Local cursor pointer speed multiplier (0.2x - 3.0x). 1.0 = no acceleration.
     public float localCursorSpeedMultiplier = 1.0f;
 
+    // Automatically enable the client-side local cursor when a stream starts or resumes.
+    public boolean autoEnableLocalCursor = false;
+
     public boolean enableMultiTouchGestures;
 
     //禁用内置的特殊指令
@@ -1137,6 +1140,8 @@ public class PreferenceConfiguration {
         config.enableMouseLocalCursor=prefs.getBoolean("checkbox_mouse_local_cursor",false);
 
         config.localCursorSpeedMultiplier = prefs.getInt("seekbar_local_cursor_speed", 100) / 100f;
+
+        config.autoEnableLocalCursor = prefs.getBoolean("checkbox_auto_enable_local_cursor", false);
 
         config.enableMultiTouchGestures = prefs.getBoolean("checkbox_multi_touch_gestures", false);
 

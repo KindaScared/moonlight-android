@@ -21,6 +21,17 @@ public final class LocalCursorState {
         this.enabled = enabled;
     }
 
+    // Sets the enabled state and returns true only when it actually changed. Used to run
+    // activation side effects exactly once per transition and avoid duplicate init when
+    // the requested state already matches the current state.
+    public boolean setEnabledIfChanged(boolean enabled) {
+        if (this.enabled == enabled) {
+            return false;
+        }
+        this.enabled = enabled;
+        return true;
+    }
+
     public boolean isPositionValid() {
         return positionValid;
     }
