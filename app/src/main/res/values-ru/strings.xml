@@ -384,8 +384,8 @@
     <string name="title_touchscreen_mode">Режим сенсора</string>
     <string name="summary_render_mode">По умолчанию 2D или SBS 3D. В режиме 3D ширина изображения будет автоматически удвоена с добавлением эффекта, настройка не требуется. Преобразование 2D в 3D с помощью ИИ.</string>
     <string name="summary_touchscreen_mode">Выберите режим Мультитач / Одиночное касание / Трекпад / Выключено.\nПеро/стилус остаются работоспособны при Выключено.\nНа внешнем дисплее принудительно Трекпад (Natural).</string>
-    <string name="title_checkbox_mouse_local_cursor">Использовать локальный курсор мыши</string>
-    <string name="summary_checkbox_mouse_local_cursor">Захватывается внешний курсор физической мыши. Данная опция позволяет отображать системный курсор Android.</string>
+    
+    
     <string name="title_checkbox_multi_touch_gestures">Включить мультитач-жесты</string>
     <string name="summary_checkbox_multi_touch_gestures">Включить жест с 3 пальцами для клавиатуры, 4 пальцами для полной клавиатуры, 5 пальцами для быстрого меню при использовании режима мультитач.</string>
     <string name="title_checkbox_onscreen_style_official">Официальная тема виртуального геймпада</string>
@@ -521,7 +521,7 @@
     <string name="keyboard_layout_set_3">Профиль 3</string>
     <string name="keyboard_layout_set_4">Профиль 4</string>
     <string name="keyboard_layout_set_5">Профиль 5</string>
-    <string name="toggle_local_mouse_cursor">Переключить локальный курсор (нужна физ. мышь)</string>
+    
     <string name="debug_info_android_version">Версия Android:</string>
     <string name="debug_info_api_version">Версия API:</string>
     <string name="debug_info_kernel_version">Версия ядра:</string>

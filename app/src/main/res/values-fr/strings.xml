@@ -390,8 +390,8 @@
     <string name="summary_touchscreen_mode">Choisissez entre les modes MultiTouch/SingleTouch/Trackpad/Désactivé.\nLe stylet/stylo sont toujours utilisables lorsque le mode Désactivé est sélectionné.\nForcé en mode Track Pad(Natural) lors de l\'utilisation d\'un affichage externe.</string>
 
     <!-- New Strings -->
-    <string name="title_checkbox_mouse_local_cursor">Utiliser le curseur local de la souris</string>
-    <string name="summary_checkbox_mouse_local_cursor">Le curseur physique de la souris par défaut sera capturé, cette option peut afficher le curseur du système Android</string>
+    
+    
     <string name="title_checkbox_onscreen_style_official">Skin officielle de la manette virtuelle</string>
     <string name="summary_checkbox_onscreen_style_official">Si vous aimez toujours l\'ancien style des boutons officiels de la manette virtuelle, vous pouvez sélectionner cette option.\nLes formes des boutons peuvent être carrées si vous avez sélectionné le bouton virtuel inférieur [Les boutons carrés sont des boutons carrés]</string>
     <string name="title_checkbox_enable_perf_overlay_lite">Activer le mode Lite</string>
@@ -513,7 +513,7 @@
     <string name="keyboard_layout_set_3">Profil 3</string>
     <string name="keyboard_layout_set_4">Profil 4</string>
     <string name="keyboard_layout_set_5">Profil 5</string>
-    <string name="toggle_local_mouse_cursor">Basculer le curseur local de la souris (souris physique requise)</string>
+    
     <string name="debug_info_android_version">Version Android :</string>
     <string name="debug_info_api_version">Version API :</string>
     <string name="debug_info_kernel_version">Version du noyau :</string>

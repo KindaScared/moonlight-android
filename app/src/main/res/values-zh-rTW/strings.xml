@@ -448,8 +448,8 @@
 	<string name="summary_render_mode">預設為 2D 或 SBS 3D。3D 會自動加倍寬度並套用效果，無需設定。支援 AI 2D 轉 3D。</string>
 	<string name="summary_touchscreen_mode">在多點觸控/單點觸控/觸控板/停用模式間選擇。\n當選擇停用時，手寫筆/觸控筆仍可使用。\n使用外接顯示器時將強制為觸控板（自然）模式。</string>
 
-	<string name="title_checkbox_mouse_local_cursor">使用本機滑鼠游標</string>
-	<string name="summary_checkbox_mouse_local_cursor">預設會擷取外接實體滑鼠游標，本選項可顯示 Android 系統游標</string>
+	
+	
 
 	<string name="title_checkbox_multi_touch_gestures">啟用多點觸控手勢</string>
 	<string name="summary_checkbox_multi_touch_gestures">在多點觸控模式下：三指點擊開啟鍵盤、四指點擊開啟全鍵盤、五指點擊開啟快速選單。</string>
@@ -634,7 +634,7 @@
 	<string name="keyboard_layout_set_4">設定檔 4</string>
 	<string name="keyboard_layout_set_5">設定檔 5</string>
 
-	<string name="toggle_local_mouse_cursor">切換本機滑鼠游標（需實體滑鼠）</string>
+	
 
 	<string name="debug_info_android_version">Android 版本：</string>
 	<string name="debug_info_api_version">API 版本：</string>

@@ -405,8 +405,8 @@
 
 
     <!-- New Strings -->
-    <string name="title_checkbox_mouse_local_cursor">Sử dụng con trỏ chuột nội bộ</string>
-    <string name="summary_checkbox_mouse_local_cursor">Con trỏ chuột vật lý ngoài sẽ bị bắt, tùy chọn này sẽ hiển thị con trỏ chuột của hệ thống Android</string>
+    
+    
 
     <string name="title_checkbox_onscreen_style_official">Giao diện tay cầm ảo chính thức</string>
     <string name="summary_checkbox_onscreen_style_official">Nếu bạn vẫn thích kiểu giao diện tay cầm ảo cũ, bạn có thể chọn tùy chọn này.\nNút có thể là hình vuông nếu bạn chọn nút ảo phía dưới [Nút bình thường là nút vuông]</string>
@@ -552,7 +552,7 @@
     <string name="keyboard_layout_set_3">Cấu hình 3</string>
     <string name="keyboard_layout_set_4">Cấu hình 4</string>
     <string name="keyboard_layout_set_5">Cấu hình 5</string>
-    <string name="toggle_local_mouse_cursor">Bật/tắt con trỏ chuột trên thiết bị (cần chuột thật)</string>
+    
     <string name="debug_info_android_version">Phiên bản Android:</string>
     <string name="debug_info_api_version">Phiên bản API:</string>
     <string name="debug_info_kernel_version">Phiên bản Kernel:</string>

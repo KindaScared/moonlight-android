@@ -394,7 +394,7 @@
     <string name="game_menu_toggle_virtual_model">Toggle On-screen controller</string>
     <string name="game_menu_toggle_virtual_keyboard_model">Toggle On-screen full keyboard</string>
     <string name="game_menu_switch_touch_sensitivity_model">Switch touch sensitivity</string>
-    <string name="game_menu_local_cursor_speed">Local cursor pointer speed</string>
+    <string name="game_menu_local_cursor_speed">Client-side cursor speed</string>
 
 
     <string name="game_menu_toggle_mouse_on">Enable Controller Mouse Emulation</string>
@@ -459,12 +459,12 @@
     <string name="title_touchscreen_mode">Touchscreen Mode</string>
     <string name="summary_render_mode">Default 2D or SBS 3D. 3D will simply double your width and add the effect automatically, no setup required. AI 2D to 3D conversion </string>
     <string name="summary_touchscreen_mode">Select between MultiTouch/SingleTouch/Trackpad/Disabled mode.\nPen/Stylus are still usable when Disabled is selected.\nForced to Track Pad(Natural) mode when useing external display.</string>
-    <string name="title_checkbox_mouse_local_cursor">Use local mouse cursor</string>
-    <string name="summary_checkbox_mouse_local_cursor">Default external physical mouse cursor will be captured, this option can display Android system cursor</string>
-    <string name="title_local_cursor_speed">Local cursor pointer speed</string>
-    <string name="summary_local_cursor_speed">Pointer speed multiplier for the local cursor (mouse acceleration). Higher moves the cursor further per mouse movement.</string>
-    <string name="title_auto_enable_local_cursor">Automatically enable local cursor</string>
-    <string name="summary_auto_enable_local_cursor">Automatically enable the local cursor when a streaming session starts or resumes.</string>
+    <string name="title_checkbox_mouse_local_cursor">Show Android system cursor</string>
+    <string name="summary_checkbox_mouse_local_cursor">By default your mouse pointer is captured and hidden. Turn this on to display the Android system cursor instead.</string>
+    <string name="title_local_cursor_speed">Client-side cursor speed</string>
+    <string name="summary_local_cursor_speed">Pointer speed for the client-side cursor (mouse acceleration). Higher moves the cursor further per mouse movement.</string>
+    <string name="title_auto_enable_local_cursor">Automatically enable client-side cursor</string>
+    <string name="summary_auto_enable_local_cursor">Automatically turn on the client-side cursor when a stream starts or resumes. You can still toggle it any time with Ctrl+Alt+Shift+V.</string>
     <string name="title_checkbox_multi_touch_gestures">Enable multi-touch gestures</string>
     <string name="summary_checkbox_multi_touch_gestures">Enable 3 finger tap for keyboard, 4 finger tap for full keyboard, 5 finger tap for quick menu when using multi-touch mode.</string>
     <string name="title_checkbox_onscreen_style_official">Official Virtual Gamepad Skin</string>
@@ -604,7 +604,7 @@
     <string name="keyboard_layout_set_3">Profile 3</string>
     <string name="keyboard_layout_set_4">Profile 4</string>
     <string name="keyboard_layout_set_5">Profile 5</string>
-    <string name="toggle_local_mouse_cursor">Toggle local mouse cursor(physical mouse needed)</string>
+    <string name="toggle_local_mouse_cursor">Show/hide Android system cursor (physical mouse required)</string>
     <string name="debug_info_android_version">Android Version:</string>
     <string name="debug_info_api_version">API Version:</string>
     <string name="debug_info_kernel_version">Kernel Version:</string>
