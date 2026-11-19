@@ -408,6 +408,24 @@
             android:summary="@string/summary_checkbox_absolute_mouse_mode"
             android:title="@string/title_checkbox_absolute_mouse_mode"
             app:iconSpaceReserved="false" />
+        <CheckBoxPreference
+            android:defaultValue="false"
+            android:key="checkbox_auto_enable_local_cursor"
+            android:summary="@string/summary_checkbox_auto_enable_local_cursor"
+            android:title="@string/title_checkbox_auto_enable_local_cursor"
+            app:iconSpaceReserved="false" />
+        <com.limelight.preferences.SeekBarPreference
+            android:defaultValue="100"
+            android:key="seekbar_local_cursor_speed"
+            android:max="300"
+            android:summary="@string/summary_seekbar_local_cursor_speed"
+            android:text="@string/suffix_seekbar_local_cursor_speed"
+            android:title="@string/title_seekbar_local_cursor_speed"
+            app:iconSpaceReserved="false"
+            seekbar:divisor="100"
+            seekbar:keyStep="10"
+            seekbar:min="20"
+            seekbar:step="10" />
         <com.limelight.preferences.SeekBarPreference
             android:defaultValue="100"
             android:key="seekbar_trackpad_sensitivity_x"

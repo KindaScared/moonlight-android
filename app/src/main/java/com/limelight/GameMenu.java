@@ -264,6 +264,11 @@ public class GameMenu implements Game.GameMenuCallbacks {
         }));
 
         options.add(new MenuOption(getString(R.string.game_menu_switch_touch_sensitivity_model), true, game::switchTouchSensitivity));
+
+        // Client-side cursor speed dialog: a UI navigation action, so it must
+        // NOT re-grab game input focus (no withGameFocus flag).
+        options.add(new MenuOption(getString(R.string.game_menu_local_cursor_speed),
+                game::showLocalCursorSpeedDialog));
         if (device != null) {
             options.addAll(device.getGameMenuOptions());
         }

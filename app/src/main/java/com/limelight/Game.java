@@ -13,9 +13,12 @@ import com.limelight.binding.audio.AndroidAudioRenderer;
 import com.limelight.binding.input.ControllerHandler;
 import com.limelight.binding.input.GameInputDevice;
 import com.limelight.binding.input.KeyboardTranslator;
+import com.limelight.binding.input.LocalCursorState;
+import com.limelight.binding.input.LocalCursorSynchronizer;
 import com.limelight.binding.input.capture.InputCaptureManager;
 import com.limelight.binding.input.capture.InputCaptureProvider;
 import com.limelight.binding.input.touch.AbsoluteTouchContext;
+import com.limelight.binding.input.touch.CursorPositionListener;
 import com.limelight.binding.input.touch.RelativeTouchContext;
 import com.limelight.binding.input.driver.UsbDriverService;
 import com.limelight.binding.input.evdev.EvdevListener;
@@ -40,6 +43,7 @@ import com.limelight.nvstream.jni.MoonBridge;
 import com.limelight.preferences.GlPreferences;
 import com.limelight.preferences.PreferenceConfiguration;
 import com.limelight.profiles.ProfilesManager;
+import com.limelight.ui.CursorOverlayView;
 import com.limelight.ui.ExternalControllerView;
 import com.limelight.ui.GameGestures;
 import com.limelight.ui.StreamContainer;
@@ -134,6 +138,9 @@ import java.util.Map;
 import java.util.Set;
 import android.view.SurfaceView;
 import android.view.ViewGroup;
+import android.view.ContextThemeWrapper;
+import android.widget.LinearLayout;
+import android.widget.SeekBar;
 
 
 public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
@@ -207,6 +214,14 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
     private boolean waitingForAllModifiersUp = false;
     private int specialKeyCode = KeyEvent.KEYCODE_UNKNOWN;
     private StreamContainer streamContainer;
+
+    // Client-side (local) cursor state. Pure state/coordinate logic that is
+    // independent of the overlay View and the Android system pointer.
+    private final LocalCursorState localCursorState = new LocalCursorState();
+
+    // Owns the connection generation, the host-synchronisation completion
+    // state and the bounded retry chain for the client-side cursor.
+    private LocalCursorSynchronizer localCursorSynchronizer;
     private long synthTouchDownTime = 0;
 
     private boolean pendingDrag = false;
@@ -462,6 +477,56 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
         streamContainer.setOnKeyListener(this);
         streamContainer.setInputCallbacks(this);
         streamContainer.setCommitTextEnabled(prefConfig.enableCommitText);
+
+        // Wire the client-side cursor host synchronisation state machine. Stream
+        // dimensions are always read live from the container (never cached) and
+        // guarded for the pre-layout zero-size case inside the synchronizer.
+        localCursorSynchronizer = new LocalCursorSynchronizer(
+                localCursorState,
+                new LocalCursorSynchronizer.DimensionSource() {
+                    @Override
+                    public int getWidth() {
+                        return streamContainer != null ? streamContainer.getWidth() : 0;
+                    }
+
+                    @Override
+                    public int getHeight() {
+                        return streamContainer != null ? streamContainer.getHeight() : 0;
+                    }
+                },
+                new LocalCursorSynchronizer.PositionSender() {
+                    @Override
+                    public void sendMousePosition(short x, short y, short referenceWidth, short referenceHeight) {
+                        // Update the Android overlay first, then submit the exact
+                        // resulting position to the host.
+                        updateLocalCursorOverlayPosition();
+                        if (conn != null) {
+                            conn.sendMousePosition(x, y, referenceWidth, referenceHeight);
+                        }
+                    }
+                },
+                new LocalCursorSynchronizer.Scheduler() {
+                    @Override
+                    public void postDelayed(Runnable runnable, long delayMs) {
+                        timerHandler.postDelayed(runnable, delayMs);
+                    }
+
+                    @Override
+                    public void removeCallbacks(Runnable runnable) {
+                        timerHandler.removeCallbacks(runnable);
+                    }
+                },
+                new LocalCursorSynchronizer.HostState() {
+                    @Override
+                    public boolean isLocalCursorEnabled() {
+                        return localCursorState.isEnabled();
+                    }
+
+                    @Override
+                    public boolean isConnectionActive() {
+                        return connected && conn != null;
+                    }
+                });
 
         rootView = streamContainer.getParent();
 
@@ -1890,7 +1955,7 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
     };
 
     // Returns true if the key stroke was consumed
-    private boolean handleSpecialKeys(int androidKeyCode, boolean down) {
+    private boolean handleSpecialKeys(int androidKeyCode, boolean down, int repeatCount) {
         int modifierMask = 0;
         int nonModifierKeyCode = KeyEvent.KEYCODE_UNKNOWN;
 
@@ -1987,6 +2052,17 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
                 (KeyboardPacket.MODIFIER_CTRL | KeyboardPacket.MODIFIER_ALT | KeyboardPacket.MODIFIER_SHIFT) &&
                 (down && nonModifierKeyCode != KeyEvent.KEYCODE_UNKNOWN)) {
             switch (androidKeyCode) {
+                case KeyEvent.KEYCODE_V:
+                    // Toggle the client-side (local) cursor overlay. Unlike the other
+                    // combos, this one is deliberately NOT consumed: it activates only
+                    // on the initial key-down (never on key-up or auto-repeat), never
+                    // enters the deferred modifier-release mechanism and the V event
+                    // continues through the normal host keyboard forwarding path.
+                    if (LocalCursorState.shouldActivateShortcut(down, repeatCount)) {
+                        toggleLocalCursor();
+                    }
+                    return false;
+
                 case KeyEvent.KEYCODE_Z:
                 case KeyEvent.KEYCODE_Q:
                 case KeyEvent.KEYCODE_C:
@@ -2084,7 +2160,7 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
         // Try the keyboard handler if it wasn't handled as a game controller
         if (!handled) {
             // Let this method take duplicate key down events
-            if (handleSpecialKeys(event.getKeyCode(), true)) {
+            if (handleSpecialKeys(event.getKeyCode(), true, event.getRepeatCount())) {
                 return true;
             }
 
@@ -2172,7 +2248,7 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
 
         // Try the keyboard handler if it wasn't handled as a game controller
         if (!handled) {
-            if (handleSpecialKeys(event.getKeyCode(), false)) {
+            if (handleSpecialKeys(event.getKeyCode(), false, 0)) {
                 return true;
             }
 
@@ -2842,7 +2918,12 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
                     short deltaY = (short)inputCaptureProvider.getRelativeAxisY(event);
 
                     if (deltaX != 0 || deltaY != 0) {
-                        if (prefConfig.absoluteMouseMode) {
+                        if (localCursorState.isEnabled() && updateLocalCursorFromDelta(deltaX, deltaY)) {
+                            // The client-side cursor is authoritative: the resulting
+                            // absolute position has already been drawn locally and
+                            // submitted to the host by updateLocalCursorFromDelta().
+                        }
+                        else if (prefConfig.absoluteMouseMode) {
                             // NB: view may be null, but we can unconditionally use streamView because we don't need to adjust
                             // relative axis deltas for the position of the streamView within the parent's coordinate system.
                             conn.sendMouseMoveAsMousePosition(deltaX, deltaY, (short) streamContainer.getWidth(), (short) streamContainer.getHeight());
@@ -3415,6 +3496,15 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
         eventY = Math.min(Math.max(eventY, 0), streamContainer.getHeight());
 
         conn.sendMousePosition((short)eventX, (short)eventY, (short) streamContainer.getWidth(), (short) streamContainer.getHeight());
+
+        // Mirror the submitted absolute position into the client-side cursor so the
+        // overlay follows the real pointer. Do not send a second host packet.
+        if (localCursorState.isEnabled()) {
+            localCursorState.setPosition(eventX, eventY,
+                    streamContainer.getWidth(), streamContainer.getHeight());
+            updateLocalCursorOverlayPosition();
+            localCursorSynchronizer.markCompleted();
+        }
     }
 
     @Override
@@ -3569,6 +3659,10 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
         runOnUiThread(new Runnable() {
             @Override
             public void run() {
+                // Stop any pending client-side cursor host synchronisation work
+                // for the terminated connection.
+                localCursorSynchronizer.invalidate();
+
                 // Let the display go to sleep now
                 getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
@@ -3687,6 +3781,12 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
                 connecting = false;
                 updatePipAutoEnter();
 
+                // Reset client-side cursor host-synchronisation state for the new
+                // connection immediately: bump the generation (invalidating any
+                // delayed callbacks from previous connections), cancel pending
+                // retries and reset the completion flag and retry budget.
+                localCursorSynchronizer.invalidate();
+
                 // Hide the mouse cursor now after a short delay.
                 // Doing it before dismissing the spinner seems to be undone
                 // when the spinner gets displayed. On Android Q, even now
@@ -3696,6 +3796,10 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
                     @Override
                     public void run() {
                         setInputGrabState(true);
+
+                        // Apply the automatic client-side cursor activation
+                        // preference after input capture has been established.
+                        applyAutoEnableLocalCursor();
                     }
                 }, 500);
 
@@ -3913,7 +4017,7 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
         short keyMap = keyboardTranslator.translate(keyCode, 0, -1);
         if (keyMap != 0) {
             // handleSpecialKeys() takes the Android keycode
-            if (handleSpecialKeys(keyCode, buttonDown)) {
+            if (handleSpecialKeys(keyCode, buttonDown, 0)) {
                 return;
             }
 
@@ -4194,7 +4298,15 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
                 // Touch mouse disabled
                 touchContextMap[i] = null;
             } else if (!prefConfig.touchscreenTrackpad) {
-                touchContextMap[i] = new AbsoluteTouchContext(conn, i, streamContainer, mode == 5);
+                // Absolute touch mode: mirror submitted positions into the
+                // client-side cursor. The listener is optional for other modes.
+                touchContextMap[i] = new AbsoluteTouchContext(conn, i, streamContainer, mode == 5,
+                        new CursorPositionListener() {
+                            @Override
+                            public void onCursorPosition(int x, int y) {
+                                onAbsoluteTouchCursorPosition(x, y);
+                            }
+                        });
             } else if (mode == 3) {
                 touchContextMap[i] = new RelativeTouchContext(conn, i, REFERENCE_HORIZ_RES, REFERENCE_VERT_RES, streamContainer, prefConfig);
             } else {
@@ -4224,6 +4336,269 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
     //切换触控灵敏度开关
     public void switchTouchSensitivity(){
         prefConfig.enableTouchSensitivity = !prefConfig.enableTouchSensitivity;
+    }
+
+    //
+    // Client-side (local) cursor support
+    //
+
+    /**
+     * Central idempotent state transition for the client-side cursor. Handles
+     * only the enabled-state transition and its local side effects; it never
+     * performs host synchronisation or schedules retries. Callers that change
+     * the state (toggle / automatic activation) each initiate exactly one
+     * synchronisation attempt via the LocalCursorSynchronizer.
+     */
+    public void setLocalCursorEnabled(boolean enabled) {
+        if (!localCursorState.setEnabledIfChanged(enabled)) {
+            // No transition: keep all side effects idempotent.
+            return;
+        }
+
+        CursorOverlayView cursorOverlay =
+                streamContainer != null ? streamContainer.getCursorOverlay() : null;
+
+        if (enabled) {
+            // Ensure mouse input is captured using the existing mechanism.
+            if (!grabbedInput) {
+                inputCaptureProvider.enableCapture();
+                grabbedInput = true;
+            }
+
+            // Hide the native Android system pointer using the existing capture
+            // provider, keeping the existing pointer-visibility flag consistent.
+            cursorVisible = false;
+            inputCaptureProvider.hideCursor();
+
+            // Show the local cursor overlay.
+            if (cursorOverlay != null) {
+                cursorOverlay.setOverlayEnabled(true);
+            }
+        } else {
+            // Disabling only hides the local overlay. The native Android pointer
+            // is not restored, host cursor visibility is untouched and unrelated
+            // mouse capture settings are not modified.
+            if (cursorOverlay != null) {
+                cursorOverlay.setOverlayEnabled(false);
+            }
+        }
+    }
+
+    /** Toggles the client-side cursor (Ctrl+Alt+Shift+V shortcut). */
+    public void toggleLocalCursor() {
+        boolean newEnabled = !localCursorState.isEnabled();
+        setLocalCursorEnabled(newEnabled);
+
+        if (newEnabled) {
+            // One immediate synchronisation attempt. If the stream surface is
+            // not ready yet, requestSync() starts the single bounded retry
+            // chain for the current connection.
+            localCursorSynchronizer.requestSync();
+        }
+    }
+
+    /** Mirrors the authoritative local cursor coordinates into the overlay. */
+    private void updateLocalCursorOverlayPosition() {
+        if (streamContainer == null) {
+            return;
+        }
+
+        CursorOverlayView cursorOverlay = streamContainer.getCursorOverlay();
+        if (cursorOverlay != null) {
+            cursorOverlay.setCursorPosition(localCursorState.getX(), localCursorState.getY());
+        }
+    }
+
+    /**
+     * Applies the automatic activation preference for a newly established
+     * connection. Called from the existing post-connection work (after input
+     * capture has been grabbed, ~500 ms after connectionStarted()). Host
+     * synchronisation state was already reset for the new connection when
+     * connectionStarted() invalidated the synchronizer; the generation is NOT
+     * bumped a second time here.
+     */
+    private void applyAutoEnableLocalCursor() {
+        boolean autoEnable = prefConfig.autoEnableLocalCursor;
+
+        // Force the local cursor state to match the preference on every new
+        // connection, even if it was toggled manually during a previous one.
+        setLocalCursorEnabled(autoEnable);
+
+        if (autoEnable && localCursorState.isEnabled()) {
+            // Defensive: ensure the overlay is visible even if the state flag
+            // was already set from before this connection.
+            CursorOverlayView cursorOverlay =
+                    streamContainer != null ? streamContainer.getCursorOverlay() : null;
+            if (cursorOverlay != null) {
+                cursorOverlay.setOverlayEnabled(true);
+            }
+
+            localCursorSynchronizer.requestSync();
+        }
+        // When the preference is false, native Android pointer visibility is
+        // deliberately left untouched.
+    }
+
+    /**
+     * Applies relative mouse movement while the client-side cursor is enabled.
+     * The client becomes authoritative: the speed-scaled delta is applied to
+     * the local state, the clamped result is drawn immediately and the exact
+     * resulting absolute position is submitted to the host.
+     *
+     * @return false if the movement could not be handled locally (e.g. the
+     *         stream container has not been measured yet), in which case the
+     *         caller falls back to the pre-existing relative mouse behaviour.
+     */
+    private boolean updateLocalCursorFromDelta(float dx, float dy) {
+        if (streamContainer == null || conn == null || !connected
+                || !localCursorState.isEnabled()) {
+            return false;
+        }
+
+        int width = streamContainer.getWidth();
+        int height = streamContainer.getHeight();
+        if (width <= 0 || height <= 0) {
+            return false;
+        }
+
+        float speed = prefConfig.localCursorSpeedMultiplier;
+        if (speed <= 0f) {
+            speed = 1.0f;
+        }
+
+        localCursorState.moveByDelta(dx, dy, width, height, speed);
+
+        // Update the Android overlay before sending the resulting host packet.
+        updateLocalCursorOverlayPosition();
+
+        conn.sendMousePosition(localCursorState.getShortX(), localCursorState.getShortY(),
+                (short) width, (short) height);
+
+        // Active absolute submissions from the local cursor path count as host
+        // synchronisation and stop any pending retry chain immediately.
+        localCursorSynchronizer.markCompleted();
+        return true;
+    }
+
+    /**
+     * Handles positions reported by absolute touchscreen input after the touch
+     * context has submitted its own host position packet. Updates the shared
+     * cursor state and the overlay only; never sends a second host packet.
+     * This keeps the local cursor continuous when switching between touch and
+     * physical mouse input.
+     */
+    private void onAbsoluteTouchCursorPosition(int x, int y) {
+        if (streamContainer == null) {
+            return;
+        }
+
+        int width = streamContainer.getWidth();
+        int height = streamContainer.getHeight();
+        if (width <= 0 || height <= 0) {
+            return;
+        }
+
+        localCursorState.setPosition(x, y, width, height);
+
+        if (localCursorState.isEnabled()) {
+            updateLocalCursorOverlayPosition();
+
+            // The touch context has just submitted this same position (with the
+            // same container dimensions) to the active connection.
+            if (connected && conn != null) {
+                localCursorSynchronizer.markCompleted();
+            }
+        }
+    }
+
+    /**
+     * Shows the in-stream "Client-side cursor speed" dialog. The value is a
+     * constant linear cursor movement multiplier (not an acceleration curve),
+     * persisted as integer hundredths. The new multiplier takes effect
+     * immediately for the running stream.
+     */
+    public void showLocalCursorSpeedDialog() {
+        final SharedPreferences speedPrefs =
+                ProfilesManager.getInstance().getOverlayingSharedPreferences(this);
+
+        final int stored = clampLocalCursorSpeed(speedPrefs.getInt(
+                PreferenceConfiguration.SEEKBAR_LOCAL_CURSOR_SPEED,
+                PreferenceConfiguration.LOCAL_CURSOR_SPEED_DEFAULT));
+
+        // Themed dialog without re-grabbing game input focus.
+        Context themedContext = new ContextThemeWrapper(this, getApplicationInfo().theme);
+
+        LinearLayout layout = new LinearLayout(this);
+        layout.setOrientation(LinearLayout.VERTICAL);
+        layout.setPadding(24, 12, 24, 12);
+
+        final TextView valueText = new TextView(this);
+        valueText.setGravity(Gravity.CENTER_HORIZONTAL);
+        valueText.setTextSize(32);
+        valueText.setText(String.format(Locale.getDefault(), "%.1f x", stored / 100f));
+        layout.addView(valueText);
+
+        final SeekBar seekBar = new SeekBar(this);
+        seekBar.setMax(PreferenceConfiguration.LOCAL_CURSOR_SPEED_MAX
+                - PreferenceConfiguration.LOCAL_CURSOR_SPEED_MIN);
+        seekBar.setKeyProgressIncrement(PreferenceConfiguration.LOCAL_CURSOR_SPEED_STEP);
+        seekBar.setProgress(stored - PreferenceConfiguration.LOCAL_CURSOR_SPEED_MIN);
+        layout.addView(seekBar, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
+
+        seekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar bar, int progress, boolean fromUser) {
+                int value = snapLocalCursorSpeed(
+                        progress + PreferenceConfiguration.LOCAL_CURSOR_SPEED_MIN);
+                int snappedProgress = value - PreferenceConfiguration.LOCAL_CURSOR_SPEED_MIN;
+                if (progress != snappedProgress) {
+                    // Snap the slider to a valid 10-unit increment
+                    bar.setProgress(snappedProgress);
+                    return;
+                }
+
+                valueText.setText(String.format(Locale.getDefault(), "%.1f x", value / 100f));
+            }
+
+            @Override
+            public void onStartTrackingTouch(SeekBar bar) {}
+
+            @Override
+            public void onStopTrackingTouch(SeekBar bar) {}
+        });
+
+        new AlertDialog.Builder(themedContext)
+                .setTitle(R.string.game_menu_local_cursor_speed)
+                .setView(layout)
+                .setPositiveButton(android.R.string.ok, (dialog, which) -> {
+                    int value = snapLocalCursorSpeed(seekBar.getProgress()
+                            + PreferenceConfiguration.LOCAL_CURSOR_SPEED_MIN);
+
+                    // Persist the integer hundredths value and live-apply it
+                    speedPrefs.edit()
+                            .putInt(PreferenceConfiguration.SEEKBAR_LOCAL_CURSOR_SPEED, value)
+                            .apply();
+                    prefConfig.localCursorSpeedMultiplier = value / 100f;
+
+                    dialog.dismiss();
+                })
+                .setNegativeButton(R.string.cancel, (dialog, which) -> {
+                    // Discard the temporary dialog selection
+                    dialog.dismiss();
+                })
+                .show();
+    }
+
+    private static int clampLocalCursorSpeed(int value) {
+        return Math.min(Math.max(value, PreferenceConfiguration.LOCAL_CURSOR_SPEED_MIN),
+                PreferenceConfiguration.LOCAL_CURSOR_SPEED_MAX);
+    }
+
+    private static int snapLocalCursorSpeed(int value) {
+        int step = PreferenceConfiguration.LOCAL_CURSOR_SPEED_STEP;
+        int snapped = Math.round(value / (float) step) * step;
+        return clampLocalCursorSpeed(snapped);
     }
 
     public void disconnect() {

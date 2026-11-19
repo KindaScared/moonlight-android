@@ -44,6 +44,7 @@ public class StreamContainer extends FrameLayout implements SurfaceHolder.Callba
     private Stereo3DRenderer mStereoRenderer;
 
     private SurfaceView mSurfaceView;
+    private CursorOverlayView mCursorOverlayView;
     private Surface mCurrentSurface;
     private Runnable onSurfaceAvailable;
     private StreamMode renderMode = null;
@@ -94,6 +95,13 @@ public class StreamContainer extends FrameLayout implements SurfaceHolder.Callba
         }
 
         mSurfaceView.getHolder().addCallback(this);
+
+        // The client-side cursor overlay must be added AFTER the rendering surface
+        // (SurfaceView or GLSurfaceView) so that it is the topmost child. The
+        // video surface composites behind the normal View hierarchy, so a later
+        // child always draws above the streamed video in both 2D and 3D modes.
+        mCursorOverlayView = new CursorOverlayView(context);
+        addView(mCursorOverlayView, childParams);
         if (mSurfaceView.getHolder().getSurface() != null && mSurfaceView.getHolder().getSurface().isValid()) {
             surfaceChanged(mSurfaceView.getHolder(), PixelFormat.RGBA_8888, mSurfaceView.getWidth(), mSurfaceView.getHeight());
         }
@@ -214,6 +222,14 @@ public class StreamContainer extends FrameLayout implements SurfaceHolder.Callba
 
     public SurfaceView getSurfaceView() {
         return mSurfaceView;
+    }
+
+    /**
+     * @return the overlay View that renders the client-side (local) cursor
+     *         above the streamed video, or null if init() has not run yet.
+     */
+    public CursorOverlayView getCursorOverlay() {
+        return mCursorOverlayView;
     }
 
     public StreamMode mapIntToStreamMode(int modeIndex) {

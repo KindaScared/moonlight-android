@@ -50,6 +50,7 @@ public class AbsoluteTouchContext implements TouchContext {
     private final int actionIndex;
     private final View targetView;
     private final Handler handler;
+    private final CursorPositionListener cursorPositionListener;
 
     private final Runnable leftButtonUpRunnable = new Runnable() {
         @Override
@@ -71,10 +72,17 @@ public class AbsoluteTouchContext implements TouchContext {
 
     public AbsoluteTouchContext(NvConnection conn, int actionIndex, View view, boolean swapped)
     {
+        this(conn, actionIndex, view, swapped, null);
+    }
+
+    public AbsoluteTouchContext(NvConnection conn, int actionIndex, View view, boolean swapped,
+                                CursorPositionListener cursorPositionListener)
+    {
         this.conn = conn;
         this.actionIndex = actionIndex;
         this.targetView = view;
         this.handler = new Handler(Looper.getMainLooper());
+        this.cursorPositionListener = cursorPositionListener;
 
         if (swapped) {
             buttonPrimary = MouseButtonPacket.BUTTON_RIGHT;
@@ -105,6 +113,11 @@ public class AbsoluteTouchContext implements TouchContext {
         lastTouchDownTime = eventTime;
         cancelled = confirmedTap = confirmedLongPress = false;
 
+        // Immediately mirror the new finger position into the client-side cursor
+        if (actionIndex == 0 && cursorPositionListener != null) {
+            cursorPositionListener.onCursorPosition(eventX, eventY);
+        }
+
         if (actionIndex == 0) {
             // Start the timers
             startTapDownTimer();
@@ -127,6 +140,12 @@ public class AbsoluteTouchContext implements TouchContext {
         eventY = Math.min(Math.max(eventY, 0), targetView.getHeight());
 
         conn.sendMousePosition((short)eventX, (short)eventY, (short)targetView.getWidth(), (short)targetView.getHeight());
+
+        // Mirror the position that was just submitted to the host into the
+        // client-side cursor. The listener must not send another host packet.
+        if (actionIndex == 0 && cursorPositionListener != null) {
+            cursorPositionListener.onCursorPosition(eventX, eventY);
+        }
     }
 
     @Override

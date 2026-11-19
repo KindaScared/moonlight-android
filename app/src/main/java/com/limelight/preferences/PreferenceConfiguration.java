@@ -328,6 +328,18 @@ public class PreferenceConfiguration {
     //物理光标捕获
     public boolean enableMouseLocalCursor;
 
+    // Client-side (local) cursor rendered by the Android client over the video.
+    // Speed is persisted as integer hundredths (100 == 1.0x).
+    public static final String SEEKBAR_LOCAL_CURSOR_SPEED = "seekbar_local_cursor_speed";
+    public static final String CHECKBOX_AUTO_ENABLE_LOCAL_CURSOR = "checkbox_auto_enable_local_cursor";
+    public static final int LOCAL_CURSOR_SPEED_MIN = 20;
+    public static final int LOCAL_CURSOR_SPEED_MAX = 300;
+    public static final int LOCAL_CURSOR_SPEED_STEP = 10;
+    public static final int LOCAL_CURSOR_SPEED_DEFAULT = 100;
+
+    public float localCursorSpeedMultiplier;
+    public boolean autoEnableLocalCursor;
+
     public boolean enableMultiTouchGestures;
 
     //禁用内置的特殊指令
@@ -981,6 +993,13 @@ private static int getFramePacingValue(Context context) {
         config.enableTouchSensitivity=prefs.getBoolean("checkbox_enable_touch_sensitivity",false);
 
         config.enableMouseLocalCursor=prefs.getBoolean("checkbox_mouse_local_cursor",false);
+
+        // Client-side cursor movement speed (linear multiplier stored as integer hundredths)
+        int localCursorSpeed = prefs.getInt(SEEKBAR_LOCAL_CURSOR_SPEED, LOCAL_CURSOR_SPEED_DEFAULT);
+        localCursorSpeed = Math.min(Math.max(localCursorSpeed, LOCAL_CURSOR_SPEED_MIN), LOCAL_CURSOR_SPEED_MAX);
+        config.localCursorSpeedMultiplier = localCursorSpeed / 100f;
+
+        config.autoEnableLocalCursor = prefs.getBoolean(CHECKBOX_AUTO_ENABLE_LOCAL_CURSOR, false);
 
         config.enableMultiTouchGestures = prefs.getBoolean("checkbox_multi_touch_gestures", false);
 
