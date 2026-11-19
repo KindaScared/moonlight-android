@@ -268,6 +268,16 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
                 public void onCursorPosition(int x, int y) {
                     onLocalCursorTouchPosition(x, y);
                 }
+
+                @Override
+                public boolean onCursorDelta(int deltaX, int deltaY) {
+                    return onLocalCursorTouchDelta(deltaX, deltaY);
+                }
+
+                @Override
+                public void onTouchActivity() {
+                    onLocalCursorTouchActivity();
+                }
             };
 
     private boolean pendingDrag = false;
@@ -605,6 +615,11 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
 
         // Client-side cursor overlay (topmost child of StreamContainer).
         cursorOverlay = streamContainer.getCursorOverlay();
+
+        // Apply the persisted client-side cursor size to the freshly created overlay.
+        if (cursorOverlay != null) {
+            cursorOverlay.setCursorSize(localCursorSizeToPixels(prefConfig.localCursorSizePercent));
+        }
 
         rootView = streamContainer.getParent();
 
@@ -1508,6 +1523,12 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
         // With Android native pointer capture, capture is lost when focus is lost,
         // so it must be requested again when focus is regained.
         inputCaptureProvider.onWindowFocusChanged(hasFocus);
+
+        // Pick up a client-side cursor size changed from the Settings activity
+        // without requiring a stream restart.
+        if (hasFocus) {
+            refreshLocalCursorSizeFromPreferences();
+        }
     }
 
     @Override
@@ -2134,34 +2155,104 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
 
     // Updates the client-side overlay from absolute touch input. The host position is
     // already sent by the touch context itself, so we only mirror it to the overlay here.
+    //
+    // Absolute touchscreen input commands the host cursor to this exact position, so it
+    // becomes the last known host cursor coordinate (even while the cursor is disabled).
+    // That guarantees the first physical mouse movement after touch continues from the
+    // host's real position instead of teleporting. The sprite is hidden while the user
+    // touches the screen; the enabled state is untouched.
     private void onLocalCursorTouchPosition(int x, int y) {
-        if (streamContainer == null || !localCursorState.isEnabled()) {
+        if (streamContainer == null) {
             return;
         }
 
-        int width = streamContainer.getWidth();
-        int height = streamContainer.getHeight();
-        if (width <= 0 || height <= 0) {
-            return;
-        }
+        localCursorState.recordTouchPosition(x, y, streamContainer.getWidth(), streamContainer.getHeight());
 
-        localCursorState.setPosition(x, y, width, height);
-
-        if (cursorOverlay != null) {
+        if (cursorOverlay != null && localCursorState.isPositionValid()) {
+            // Keep the (hidden) sprite warm so mouse handoff shows it instantly in the right spot.
             cursorOverlay.setCursorPosition(localCursorState.getX(), localCursorState.getY());
-            cursorOverlay.invalidate();
+        }
+        updateLocalCursorOverlayVisibility();
+    }
+
+    // Touchscreen activity that does not carry an authoritative host cursor position
+    // (native touch packets, trackpad gesture start): hide the temporary sprite without
+    // changing the enabled state or the tracked position. Physical mouse input shows it
+    // again at the true host position.
+    private void onLocalCursorTouchActivity() {
+        localCursorState.hideOverlay();
+        updateLocalCursorOverlayVisibility();
+    }
+
+    // A trackpad emulation context (Trackpad Natural / Gaming) is about to move the host
+    // cursor with a sensitivity-scaled relative delta. While the local cursor is enabled,
+    // the client-side absolute model takes over that movement entirely: the delta is
+    // applied to LocalCursorState and sent to the host as an absolute position instead of
+    // the context's own relative mouse packet. Returning true suppresses the context's
+    // send, so the tracked position always equals the commanded host position. When the
+    // local cursor is disabled (or not currently usable) this returns false and the touch
+    // context behaves exactly as before.
+    private boolean onLocalCursorTouchDelta(int deltaX, int deltaY) {
+        if (!localCursorState.isEnabled()) {
+            return false;
+        }
+
+        // Hide the temporary sprite while the user drives the cursor by touchscreen.
+        localCursorState.hideOverlay();
+        updateLocalCursorOverlayVisibility();
+
+        return updateLocalCursorFromDelta(deltaX, deltaY);
+    }
+
+    // Effective sprite visibility: the user-enabled state AND the transient touch/mouse
+    // handoff visibility. The overlay view itself stores no decision state of its own.
+    private void updateLocalCursorOverlayVisibility() {
+        if (cursorOverlay != null) {
+            cursorOverlay.setOverlayEnabled(localCursorState.isEnabled() && localCursorState.isOverlayVisible());
         }
     }
 
-    private void updateLocalCursorFromDelta(float deltaX, float deltaY) {
+    // Physical mouse input is taking over cursor movement while the local cursor is
+    // enabled: cancels pending touchscreen trackpad momentum (self-scheduled flick
+    // callbacks must never move or re-hide the sprite after handoff), restores the
+    // temporary visibility the touchscreen input removed and re-arms the sprite at the
+    // current tracked position. Deliberately sends nothing to the host: the tracked
+    // position already equals the last position commanded to the host (absolute
+    // touchscreen input follows the host cursor; native touch packets never touched the
+    // model), so the caller's own mouse packet continues seamlessly.
+    private void resumeLocalCursorForMouseInput() {
+        cancelTouchscreenMomentum();
+
+        localCursorState.showOverlay();
+        if (cursorOverlay != null && localCursorState.isPositionValid()) {
+            cursorOverlay.setCursorPosition(localCursorState.getX(), localCursorState.getY());
+        }
+        updateLocalCursorOverlayVisibility();
+    }
+
+    // Aborts pending touchscreen trackpad momentum frames (Trackpad Natural flicks
+    // self-schedule follow-up mouse moves on the main Looper). Only the touchscreen
+    // mouse emulation contexts are targeted and only the momentum loops are cancelled;
+    // click-release and drag timers keep running. Both momentum frames and mouse events
+    // run on the main Looper, so cancelling here guarantees no momentum frame can run
+    // after the physical mouse has taken over.
+    private void cancelTouchscreenMomentum() {
+        for (TouchContext context : touchContextMap) {
+            if (context != null) {
+                context.cancelMomentum();
+            }
+        }
+    }
+
+    private boolean updateLocalCursorFromDelta(float deltaX, float deltaY) {
         if (streamContainer == null || conn == null || !connected || !localCursorState.isEnabled()) {
-            return;
+            return false;
         }
 
         int width = streamContainer.getWidth();
         int height = streamContainer.getHeight();
         if (width <= 0 || height <= 0) {
-            return;
+            return false;
         }
 
         float speedMultiplier = prefConfig != null ? prefConfig.localCursorSpeedMultiplier : 1.0f;
@@ -2177,6 +2268,7 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
 
         conn.sendMousePosition(localCursorState.getShortX(), localCursorState.getShortY(),
                 (short) width, (short) height);
+        return true;
     }
 
     private void syncLocalCursorToHost() {
@@ -2234,13 +2326,18 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
             }
             cursorVisible = false;
 
-            if (cursorOverlay != null) {
-                cursorOverlay.setOverlayEnabled(true);
+            // Enabling is a user action: clear any temporary touch-induced hide
+            // so the sprite shows immediately, at the position that the caller's
+            // subsequent syncLocalCursorToHost() will confirm/snap to.
+            localCursorState.showOverlay();
+            if (cursorOverlay != null && localCursorState.isPositionValid()) {
+                cursorOverlay.setCursorPosition(localCursorState.getX(), localCursorState.getY());
             }
+            updateLocalCursorOverlayVisibility();
         } else {
-            if (cursorOverlay != null) {
-                cursorOverlay.setOverlayEnabled(false);
-            }
+            // Disabling only hides the client-side sprite; pointer capture and the
+            // native Android pointer are intentionally left untouched here.
+            updateLocalCursorOverlayVisibility();
         }
     }
 
@@ -2255,6 +2352,20 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
             syncLocalCursorToHost();
             scheduleLocalCursorHostSync();
         }
+    }
+
+    // Current user-enabled state of the client-side local cursor. Reflects the manual
+    // enable/disable choice only; the temporary touch-induced overlay visibility is a
+    // separate concern (see LocalCursorState.overlayVisible).
+    public boolean isLocalCursorEnabled() {
+        return localCursorState.isEnabled();
+    }
+
+    // Entry point for the Quick Access Menu local cursor enable/disable toggle. Shares
+    // the exact implementation with the Ctrl+Alt+Shift+V shortcut so both paths always
+    // behave identically (including pointer capture handling and host synchronization).
+    public void toggleLocalCursorFromMenu() {
+        toggleLocalCursor();
     }
 
     // Applies the auto-enable-local-cursor preference when a stream starts or resumes.
@@ -2335,6 +2446,65 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
             value = 300;
         }
         return value;
+    }
+
+    // The persisted percentage is a uniform scale of the sprite's base pixel size.
+    private static int localCursorSizeToPixels(int percent) {
+        return Math.round(CursorOverlayView.DEFAULT_CURSOR_SIZE * (percent / 100f));
+    }
+
+    // Persists and applies the client-side cursor size live (no restart).
+    // The value is stored as an integer percent (50-300 => 0.5x-3.0x of the base
+    // sprite) under the same preference key used by the StreamSettings SeekBarPreference,
+    // mirroring the Local Cursor Speed pattern so both menus share one persisted value.
+    public void applyLocalCursorSizePercent(int percent) {
+        if (percent < PreferenceConfiguration.LOCAL_CURSOR_SIZE_MIN) {
+            percent = PreferenceConfiguration.LOCAL_CURSOR_SIZE_MIN;
+        } else if (percent > PreferenceConfiguration.LOCAL_CURSOR_SIZE_MAX) {
+            percent = PreferenceConfiguration.LOCAL_CURSOR_SIZE_MAX;
+        }
+
+        PreferenceManager.getDefaultSharedPreferences(this)
+                .edit()
+                .putInt("seekbar_local_cursor_size", percent)
+                .apply();
+
+        if (prefConfig != null) {
+            prefConfig.localCursorSizePercent = percent;
+        }
+        if (cursorOverlay != null) {
+            cursorOverlay.setCursorSize(localCursorSizeToPixels(percent));
+        }
+    }
+
+    // Returns the persisted client-side cursor size as integer percent (50-300).
+    public int getLocalCursorSizePercent() {
+        int value = PreferenceManager.getDefaultSharedPreferences(this)
+                .getInt("seekbar_local_cursor_size", PreferenceConfiguration.LOCAL_CURSOR_SIZE_DEFAULT);
+        if (value < PreferenceConfiguration.LOCAL_CURSOR_SIZE_MIN) {
+            value = PreferenceConfiguration.LOCAL_CURSOR_SIZE_MIN;
+        } else if (value > PreferenceConfiguration.LOCAL_CURSOR_SIZE_MAX) {
+            value = PreferenceConfiguration.LOCAL_CURSOR_SIZE_MAX;
+        }
+        return value;
+    }
+
+    // The regular settings screen writes the persisted cursor size while the stream is
+    // paused; re-apply it when the game window regains focus so changes take effect
+    // without restarting the stream. Local Cursor Speed intentionally keeps its
+    // existing (unchanged) behaviour here.
+    private void refreshLocalCursorSizeFromPreferences() {
+        if (prefConfig == null) {
+            return;
+        }
+
+        int percent = getLocalCursorSizePercent();
+        if (percent != prefConfig.localCursorSizePercent) {
+            prefConfig.localCursorSizePercent = percent;
+            if (cursorOverlay != null) {
+                cursorOverlay.setCursorSize(localCursorSizeToPixels(percent));
+            }
+        }
     }
 
     // Returns true if the key stroke was consumed
@@ -3322,6 +3492,11 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
 
                     if (deltaX != 0 || deltaY != 0) {
                         if (localCursorState.isEnabled()) {
+                            // Physical mouse motion takes over from any touchscreen
+                            // input: cancel pending touchscreen momentum and show the
+                            // sprite again before applying this delta.
+                            resumeLocalCursorForMouseInput();
+
                             // The local overlay is authoritative in this mode: update the
                             // clamped client coordinate and send that exact coordinate to the
                             // host as an absolute position.
@@ -3359,6 +3534,24 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
                             if (xMax <= Short.MAX_VALUE && yMax <= Short.MAX_VALUE) {
                                 conn.sendMousePosition((short)event.getX(), (short)event.getY(),
                                         (short)xMax, (short)yMax);
+
+                                // Mirror this absolute pointer into the local cursor model
+                                // (device motion range -> stream container pixels) so the
+                                // overlay and any later handoff stay in sync.
+                                if (localCursorState.isEnabled() && xMax > 0 && yMax > 0) {
+                                    resumeLocalCursorForMouseInput();
+
+                                    int containerWidth = streamContainer.getWidth();
+                                    int containerHeight = streamContainer.getHeight();
+                                    localCursorState.setPosition(event.getX() / (float) xMax * containerWidth,
+                                            event.getY() / (float) yMax * containerHeight,
+                                            containerWidth, containerHeight);
+                                    if (cursorOverlay != null && localCursorState.isPositionValid()) {
+                                        cursorOverlay.setCursorPosition(localCursorState.getX(), localCursorState.getY());
+                                        cursorOverlay.invalidate();
+                                    }
+                                    updateLocalCursorOverlayVisibility();
+                                }
                             }
                         }
                     }
@@ -3603,6 +3796,12 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
                     if (prefConfig.enableMultiTouchScreen && !prefConfig.touchscreenTrackpad && trySendTouchEvent(view, event)) {
                         // If this host supports touch events and absolute touch is enabled,
                         // send it directly as a touch event.
+
+                        // Native touch packets are a distinct input class on the host and
+                        // cannot be assumed to move the host mouse cursor, so hide the
+                        // overlay without touching the cursor position model at all. The
+                        // next physical mouse movement resumes from the true host position.
+                        onLocalCursorTouchActivity();
                         return true;
                     }
 
@@ -3904,6 +4103,12 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
 
         eventX = Math.min(Math.max(eventX, 0), width);
         eventY = Math.min(Math.max(eventY, 0), height);
+
+        // Physical pointer motion takes over from any touchscreen input: cancel stale
+        // touchscreen momentum and restore the sprite before mirroring this position.
+        if (localCursorState.isEnabled()) {
+            resumeLocalCursorForMouseInput();
+        }
 
         conn.sendMousePosition((short) eventX, (short) eventY, (short) width, (short) height);
 
@@ -4714,9 +4919,9 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
             } else if (!prefConfig.touchscreenTrackpad) {
                 touchContextMap[i] = new AbsoluteTouchContext(conn, i, streamContainer, mode == 5, localCursorTouchListener);
             } else if (mode == 3) {
-                touchContextMap[i] = new RelativeTouchContext(conn, i, REFERENCE_HORIZ_RES, REFERENCE_VERT_RES, streamContainer, prefConfig);
+                touchContextMap[i] = new RelativeTouchContext(conn, i, REFERENCE_HORIZ_RES, REFERENCE_VERT_RES, streamContainer, prefConfig, localCursorTouchListener);
             } else {
-                touchContextMap[i] = new TrackpadContext(conn, i);
+                touchContextMap[i] = new TrackpadContext(conn, i, localCursorTouchListener);
             }
         }
 

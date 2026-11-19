@@ -34,6 +34,7 @@ public class TrackpadContext implements TouchContext {
     private final NvConnection conn;
     private final int actionIndex;
     private final Handler handler;
+    private final CursorPositionListener cursorListener;
 
     private boolean swapAxis = false;
     private float sensitivityX = 1;
@@ -53,8 +54,13 @@ public class TrackpadContext implements TouchContext {
     private static final int SCROLL_TRANSITION_TIMEOUT_MS = 200;
 
     public TrackpadContext(NvConnection conn, int actionIndex) {
+        this(conn, actionIndex, null);
+    }
+
+    public TrackpadContext(NvConnection conn, int actionIndex, CursorPositionListener cursorListener) {
         this.conn = conn;
         this.actionIndex = actionIndex;
+        this.cursorListener = cursorListener;
         this.handler = new Handler(Looper.getMainLooper());
     }
 
@@ -86,7 +92,7 @@ public class TrackpadContext implements TouchContext {
             short intDeltaY = (short) pendingDeltaY;
 
             if (intDeltaX != 0 || intDeltaY != 0) {
-                conn.sendMouseMove(intDeltaX, intDeltaY);
+                dispatchMouseMove(intDeltaX, intDeltaY);
                 pendingDeltaX -= intDeltaX;
                 pendingDeltaY -= intDeltaY;
             }
@@ -193,6 +199,10 @@ public class TrackpadContext implements TouchContext {
         if (isNewFinger) {
             // A completely new gesture has started.
             // Cancel any pending scroll->move transition.
+            if (cursorListener != null) {
+                // Touchscreen is driving the cursor: hide the client-side overlay.
+                cursorListener.onTouchActivity();
+            }
             clickedMiddle = false;
             handler.removeCallbacks(scrollTransitionRunnable);
             isScrollTransitioning = false;
@@ -301,6 +311,23 @@ public class TrackpadContext implements TouchContext {
         }
     }
 
+    // Central send site for cursor-moving deltas. When the client-side local
+    // cursor is enabled, the listener consumes the delta: it moves its own
+    // authoritative absolute cursor model and sends an absolute position
+    // packet instead, keeping touch -> mouse handoff perfectly in sync.
+    // Without a listener (or when it declines), behavior is unchanged.
+    private void dispatchMouseMove(short deltaX, short deltaY) {
+        if (deltaX == 0 && deltaY == 0) {
+            return;
+        }
+
+        if (cursorListener != null && cursorListener.onCursorDelta(deltaX, deltaY)) {
+            return;
+        }
+
+        conn.sendMouseMove(deltaX, deltaY);
+    }
+
     @Override
     public boolean touchMoveEvent(int eventX, int eventY, long eventTime) {
         if (cancelled) {
@@ -375,16 +402,12 @@ public class TrackpadContext implements TouchContext {
             if (pointerCount == 1) {
                 // Don't move the mouse immediately after a scroll
                 if (!isScrollTransitioning) {
-                    if (sendDeltaX != 0 || sendDeltaY != 0) {
-                        conn.sendMouseMove(sendDeltaX, sendDeltaY);
-                    }
+                    dispatchMouseMove(sendDeltaX, sendDeltaY);
                 }
             } else {
                 if (actionIndex == 1) {
                     if (confirmedDrag) {
-                        if (sendDeltaX != 0 || sendDeltaY != 0) {
-                            conn.sendMouseMove(sendDeltaX, sendDeltaY);
-                        }
+                        dispatchMouseMove(sendDeltaX, sendDeltaY);
                     } else if (pointerCount == 2) {
                         checkForConfirmedScroll();
                         if (confirmedScroll) {
@@ -422,6 +445,26 @@ public class TrackpadContext implements TouchContext {
 
         if (confirmedDrag) {
             conn.sendMouseButtonUp(getMouseButtonIndex());
+        }
+    }
+
+    @Override
+    public void cancelMomentum() {
+        if (!isFlicking) {
+            return;
+        }
+
+        // Stop the self-reposting momentum loop only. Unrelated timers
+        // (click-release, scroll transition) are deliberately left running.
+        isFlicking = false;
+        handler.removeCallbacks(momentumRunnable);
+        handler.removeCallbacks(scrollMomentumRunnable);
+
+        // Mirror the natural momentum stop: a flick drag that held the button
+        // down must not leave it pressed across a physical mouse handoff.
+        if (confirmedDrag) {
+            conn.sendMouseButtonUp(getMouseButtonIndex());
+            confirmedDrag = false;
         }
     }
 

@@ -14,6 +14,7 @@ import org.junit.runner.RunWith;
 import org.robolectric.RobolectricTestRunner;
 import org.robolectric.annotation.Config;
 
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
@@ -46,5 +47,21 @@ public class AutoEnableLocalCursorPreferenceTest {
                 .commit();
 
         assertTrue(PreferenceConfiguration.readPreferences(context).autoEnableLocalCursor);
+    }
+
+    @Test
+    public void localCursorSize_defaultsTo100Percent() {
+        assertEquals(PreferenceConfiguration.LOCAL_CURSOR_SIZE_DEFAULT,
+                PreferenceConfiguration.readPreferences(context).localCursorSizePercent);
+    }
+
+    @Test
+    public void localCursorSize_isPersistedAndLoaded() {
+        PreferenceManager.getDefaultSharedPreferences(context)
+                .edit()
+                .putInt("seekbar_local_cursor_size", 150)
+                .commit();
+
+        assertEquals(150, PreferenceConfiguration.readPreferences(context).localCursorSizePercent);
     }
 }

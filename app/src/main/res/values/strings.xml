@@ -465,6 +465,12 @@
     <string name="summary_local_cursor_speed">Pointer speed for the client-side cursor (mouse acceleration). Higher moves the cursor further per mouse movement.</string>
     <string name="title_auto_enable_local_cursor">Automatically enable client-side cursor</string>
     <string name="summary_auto_enable_local_cursor">Automatically turn on the client-side cursor when a stream starts or resumes. You can still toggle it any time with Ctrl+Alt+Shift+V.</string>
+    <string name="title_local_cursor_size">Client-side cursor size</string>
+    <string name="summary_local_cursor_size">Size of the client-side cursor as a percentage of the default. The cursor is re-rendered from a vector at the selected size, so it stays sharp.</string>
+    <string name="game_menu_local_cursor_size">Client-side cursor size</string>
+    <string name="game_menu_local_cursor">Client-side cursor</string>
+    <string name="state_on">On</string>
+    <string name="state_off">Off</string>
     <string name="title_checkbox_multi_touch_gestures">Enable multi-touch gestures</string>
     <string name="summary_checkbox_multi_touch_gestures">Enable 3 finger tap for keyboard, 4 finger tap for full keyboard, 5 finger tap for quick menu when using multi-touch mode.</string>
     <string name="title_checkbox_onscreen_style_official">Official Virtual Gamepad Skin</string>

@@ -29,6 +29,7 @@ public class RelativeTouchContext implements TouchContext {
     private final int referenceHeight;
     private final View targetView;
     private final PreferenceConfiguration prefConfig;
+    private final CursorPositionListener positionListener;
     private final Handler handler;
 
     private final Runnable dragTimerRunnable = new Runnable() {
@@ -93,7 +94,8 @@ public class RelativeTouchContext implements TouchContext {
 
     public RelativeTouchContext(NvConnection conn, int actionIndex,
                                 int referenceWidth, int referenceHeight,
-                                View view, PreferenceConfiguration prefConfig)
+                                View view, PreferenceConfiguration prefConfig,
+                                CursorPositionListener positionListener)
     {
         this.conn = conn;
         this.actionIndex = actionIndex;
@@ -101,6 +103,7 @@ public class RelativeTouchContext implements TouchContext {
         this.referenceHeight = referenceHeight;
         this.targetView = view;
         this.prefConfig = prefConfig;
+        this.positionListener = positionListener;
         this.handler = new Handler(Looper.getMainLooper());
     }
 
@@ -160,6 +163,11 @@ public class RelativeTouchContext implements TouchContext {
             originalTouchTime = eventTime;
             cancelled = confirmedDrag = confirmedMove = confirmedScroll = false;
             distanceMoved = 0;
+
+            if (positionListener != null) {
+                // Touchscreen is driving the cursor: hide the client-side overlay.
+                positionListener.onTouchActivity();
+            }
 
             if (actionIndex == 0) {
                 // Start the timer for engaging a drag
@@ -271,15 +279,29 @@ public class RelativeTouchContext implements TouchContext {
                         conn.sendMouseHighResScroll((short)(deltaY * SCROLL_SPEED_FACTOR));
                     }
                 } else {
-                    if (prefConfig.absoluteMouseMode) {
-                        conn.sendMouseMoveAsMousePosition(
-                                (short) deltaX,
-                                (short) deltaY,
-                                (short) targetView.getWidth(),
-                                (short) targetView.getHeight());
+                    // Compute the exact deltas we would have sent to the host.
+                    short moveX, moveY;
+                    boolean absoluteAsPosition = prefConfig.absoluteMouseMode;
+                    if (absoluteAsPosition) {
+                        moveX = (short) deltaX;
+                        moveY = (short) deltaY;
+                    } else {
+                        moveX = (short) (deltaX*prefConfig.touchPadSensitivity*0.01f);
+                        moveY = (short) (deltaY*prefConfig.touchPadYSensitity*0.01f);
+                    }
+
+                    // When the client-side local cursor is enabled, its absolute
+                    // cursor model owns cursor movement (and sends its own absolute
+                    // position packet) so touch -> mouse handoff cannot desync.
+                    if (positionListener != null && positionListener.onCursorDelta(moveX, moveY)) {
+                        // Consumed by the client-side cursor path; send nothing here.
+                    }
+                    else if (absoluteAsPosition) {
+                        conn.sendMouseMoveAsMousePosition(moveX, moveY,
+                                (short) targetView.getWidth(), (short) targetView.getHeight());
                     }
                     else {
-                        conn.sendMouseMove((short) (deltaX*prefConfig.touchPadSensitivity*0.01f), (short) (deltaY*prefConfig.touchPadYSensitity*0.01f));
+                        conn.sendMouseMove(moveX, moveY);
                     }
                 }
 
@@ -318,6 +340,12 @@ public class RelativeTouchContext implements TouchContext {
     @Override
     public boolean isCancelled() {
         return cancelled;
+    }
+
+    @Override
+    public void cancelMomentum() {
+        // Trackpad Gaming mode schedules no momentum cursor motion; only drag
+        // and button-up timers exist here and they must keep running.
     }
 
     @Override

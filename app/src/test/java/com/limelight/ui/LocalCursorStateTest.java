@@ -182,4 +182,118 @@ public class LocalCursorStateTest {
         assertTrue(state.setEnabledIfChanged(false));
         assertFalse(state.isEnabled());
     }
+
+    @Test
+    public void overlayDefaultsToVisible() {
+        LocalCursorState state = new LocalCursorState();
+
+        assertTrue(state.isOverlayVisible());
+    }
+
+    @Test
+    public void hideAndShowOverlayDoNotAffectEnabledState() {
+        LocalCursorState state = new LocalCursorState();
+        state.setEnabledIfChanged(true);
+
+        state.hideOverlay();
+        assertFalse(state.isOverlayVisible());
+        assertTrue(state.isEnabled());
+
+        state.showOverlay();
+        assertTrue(state.isOverlayVisible());
+        assertTrue(state.isEnabled());
+
+        // A disabled cursor stays disabled regardless of overlay visibility:
+        // mouse visibility must never resurrect a user-disabled cursor.
+        state.setEnabledIfChanged(false);
+        state.showOverlay();
+        assertFalse(state.isEnabled());
+    }
+
+    @Test
+    public void recordTouchPosition_hidesOverlayAndTracksPosition() {
+        LocalCursorState state = new LocalCursorState();
+        state.setEnabledIfChanged(true);
+        state.setPosition(10f, 10f, 1000, 1000);
+
+        state.recordTouchPosition(400f, 250f, 1000, 1000);
+
+        assertEquals(400f, state.getX(), 0.0001f);
+        assertEquals(250f, state.getY(), 0.0001f);
+        assertTrue(state.isPositionValid());
+        assertFalse(state.isOverlayVisible());
+        assertTrue(state.isEnabled());
+    }
+
+    @Test
+    public void recordTouchPosition_tracksPositionWhileDisabled() {
+        LocalCursorState state = new LocalCursorState();
+
+        // Absolute touch input keeps the last known host cursor position current
+        // even while the cursor is user-disabled, so a later enable (and its host
+        // sync) does not teleport the host cursor from a stale coordinate.
+        state.recordTouchPosition(300f, 600f, 1000, 1000);
+
+        assertEquals(300f, state.getX(), 0.0001f);
+        assertEquals(600f, state.getY(), 0.0001f);
+        assertFalse(state.isEnabled());
+        assertFalse(state.isOverlayVisible());
+    }
+
+    @Test
+    public void recordTouchPosition_clampsToStreamBounds() {
+        LocalCursorState state = new LocalCursorState();
+
+        state.recordTouchPosition(-50f, 99999f, 800, 600);
+
+        assertEquals(0f, state.getX(), 0.0001f);
+        assertEquals(600f, state.getY(), 0.0001f);
+    }
+
+    @Test
+    public void mouseResumeAfterTouch_continuesFromLastTouchPosition() {
+        LocalCursorState state = new LocalCursorState();
+        state.setEnabledIfChanged(true);
+
+        // Touch moves the host (and the model), hiding the sprite...
+        state.recordTouchPosition(500f, 400f, 1000, 1000);
+        assertFalse(state.isOverlayVisible());
+
+        // ...physical mouse input resumes the sprite WITHOUT moving the model,
+        // then the first actual mouse delta is applied on top of the touch
+        // position: no artificial displacement on the host.
+        state.showOverlay();
+        assertTrue(state.isOverlayVisible());
+        assertEquals(500f, state.getX(), 0.0001f);
+        assertEquals(400f, state.getY(), 0.0001f);
+
+        state.moveByDelta(25f, -15f, 1000, 1000);
+        assertEquals(525f, state.getX(), 0.0001f);
+        assertEquals(385f, state.getY(), 0.0001f);
+    }
+
+    @Test
+    public void repeatedTouchMouseCyclesStayConsistent() {
+        LocalCursorState state = new LocalCursorState();
+        state.setEnabledIfChanged(true);
+
+        for (int i = 0; i < 10; i++) {
+            // Touch: host cursor follows the finger, sprite hides.
+            state.recordTouchPosition(100f + i, 200f + i, 1000, 1000);
+            assertFalse(state.isOverlayVisible());
+            assertTrue(state.isEnabled());
+
+            // Mouse: sprite reappears at the touch position and motion continues.
+            state.showOverlay();
+            assertTrue(state.isOverlayVisible());
+            state.moveByDelta(5f, 5f, 1000, 1000);
+        }
+
+        // Each cycle re-records the touch position, so the final coordinate is
+        // the last touch (109/209) plus the single delta applied after it.
+        assertEquals(114f, state.getX(), 0.0001f);
+        assertEquals(214f, state.getY(), 0.0001f);
+        assertTrue(state.isEnabled());
+        assertTrue(state.isOverlayVisible());
+    }
 }

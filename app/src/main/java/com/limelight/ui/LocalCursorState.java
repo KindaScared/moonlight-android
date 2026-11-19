@@ -9,6 +9,14 @@ package com.limelight.ui;
  */
 public final class LocalCursorState {
     private boolean enabled;
+
+    // Transient overlay visibility, deliberately separate from the user's
+    // enabled choice. Touchscreen input hides the sprite while the user
+    // touches the screen; physical mouse input (or a user enable) shows it
+    // again. Hiding never disables the underlying cursor feature and never
+    // resets the tracked position.
+    private boolean overlayVisible = true;
+
     private boolean positionValid;
     private float x;
     private float y;
@@ -76,6 +84,29 @@ public final class LocalCursorState {
 
     public void initializeCenter(int width, int height) {
         setPosition(width / 2f, height / 2f, width, height);
+    }
+
+    public boolean isOverlayVisible() {
+        return overlayVisible;
+    }
+
+    public void showOverlay() {
+        overlayVisible = true;
+    }
+
+    public void hideOverlay() {
+        overlayVisible = false;
+    }
+
+    // Records an absolute touchscreen position that the host has just been
+    // commanded to (absolute touch-mouse modes). The host cursor IS at this
+    // point, so it becomes the last known host cursor coordinate: mouse
+    // handoff continues from the host's real position instead of teleporting.
+    // The sprite hides while the user is touching the screen and the enabled
+    // state is deliberately untouched.
+    public void recordTouchPosition(float x, float y, int width, int height) {
+        overlayVisible = false;
+        setPosition(x, y, width, height);
     }
 
     public short getShortX() {

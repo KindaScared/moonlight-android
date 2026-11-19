@@ -21,8 +21,16 @@ import com.limelight.R;
  * its top-left at the tracked pointer position.
  */
 public class CursorOverlayView extends View {
-    private final int cursorSize;
-    private final Bitmap cursorBitmap;
+    // Base sprite size in pixels. The user-configurable size is applied as a
+    // percentage scale of this value (see setCursorSize).
+    public static final int DEFAULT_CURSOR_SIZE = 32;
+    private static final int MIN_CURSOR_SIZE = 8;
+    private static final int MAX_CURSOR_SIZE = 512;
+
+    private final Drawable cursorDrawable;
+
+    private int cursorSize = DEFAULT_CURSOR_SIZE;
+    private Bitmap cursorBitmap;
 
     private float cursorX = 0f;
     private float cursorY = 0f;
@@ -31,24 +39,53 @@ public class CursorOverlayView extends View {
     public CursorOverlayView(Context context) {
         super(context);
 
-        cursorSize = 32;
-
-        // Rasterize the vector cursor ONCE into a bitmap so onDraw never re-renders the
-        // vector on every invalidate (the zero-latency overlay redraws very frequently).
-        Drawable cursorDrawable = context.getDrawable(R.drawable.cursor_arrow);
-        Bitmap rendered = null;
-        if (cursorDrawable != null) {
-            rendered = Bitmap.createBitmap(cursorSize, cursorSize, Bitmap.Config.ARGB_8888);
-            Canvas renderCanvas = new Canvas(rendered);
-            cursorDrawable.setBounds(0, 0, cursorSize, cursorSize);
-            cursorDrawable.draw(renderCanvas);
-        }
-        cursorBitmap = rendered;
+        cursorDrawable = context.getDrawable(R.drawable.cursor_arrow);
+        rasterizeCursor();
 
         // This view must never intercept input or take focus; it is purely a visual layer.
         setClickable(false);
         setFocusable(false);
         setFocusableInTouchMode(false);
+    }
+
+    public int getCursorSize() {
+        return cursorSize;
+    }
+
+    // Re-rasterizes the vector cursor at the requested size. The bitmap stays
+    // square so the arrow is scaled uniformly (no distortion) and its hotspot
+    // remains the top-left tip, which keeps pointer positioning and input
+    // handling completely untouched. Must be called on the UI thread.
+    public void setCursorSize(int sizePx) {
+        if (sizePx < MIN_CURSOR_SIZE) {
+            sizePx = MIN_CURSOR_SIZE;
+        } else if (sizePx > MAX_CURSOR_SIZE) {
+            sizePx = MAX_CURSOR_SIZE;
+        }
+
+        if (sizePx == cursorSize) {
+            return;
+        }
+
+        cursorSize = sizePx;
+        rasterizeCursor();
+        invalidate();
+    }
+
+    // Rasterize the vector cursor into a bitmap (once per size change) so
+    // onDraw never re-renders the vector on every invalidate (the zero-latency
+    // overlay redraws very frequently).
+    private void rasterizeCursor() {
+        if (cursorDrawable == null) {
+            cursorBitmap = null;
+            return;
+        }
+
+        Bitmap rendered = Bitmap.createBitmap(cursorSize, cursorSize, Bitmap.Config.ARGB_8888);
+        Canvas renderCanvas = new Canvas(rendered);
+        cursorDrawable.setBounds(0, 0, cursorSize, cursorSize);
+        cursorDrawable.draw(renderCanvas);
+        cursorBitmap = rendered;
     }
 
     public void setCursorPosition(float x, float y) {
