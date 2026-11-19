@@ -434,16 +434,6 @@ public class PreferenceConfiguration {
     // Local cursor pointer speed multiplier (0.2x - 3.0x). 1.0 = no acceleration.
     public float localCursorSpeedMultiplier = 1.0f;
 
-    // Client-side cursor size as a percentage of the base sprite. Stored as an
-    // integer percent to match the SeekBarPreference persistence pattern already
-    // used by the local cursor speed setting (both menus share this one value).
-    public static final int LOCAL_CURSOR_SIZE_MIN = 50;
-    public static final int LOCAL_CURSOR_SIZE_MAX = 300;
-    public static final int LOCAL_CURSOR_SIZE_STEP = 10;
-    public static final int LOCAL_CURSOR_SIZE_DEFAULT = 100;
-
-    public int localCursorSizePercent = LOCAL_CURSOR_SIZE_DEFAULT;
-
     // Automatically enable the client-side local cursor when a stream starts or resumes.
     public boolean autoEnableLocalCursor = false;
 
@@ -1150,8 +1140,6 @@ public class PreferenceConfiguration {
         config.enableMouseLocalCursor=prefs.getBoolean("checkbox_mouse_local_cursor",false);
 
         config.localCursorSpeedMultiplier = prefs.getInt("seekbar_local_cursor_speed", 100) / 100f;
-
-        config.localCursorSizePercent = prefs.getInt("seekbar_local_cursor_size", LOCAL_CURSOR_SIZE_DEFAULT);
 
         config.autoEnableLocalCursor = prefs.getBoolean("checkbox_auto_enable_local_cursor", false);
 

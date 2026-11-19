@@ -273,12 +273,6 @@ public class GameMenu implements Game.GameMenuCallbacks {
             hideMenu();
             showLocalCursorSpeedDialog();
         }));
-
-        // UI navigation action: open a sub-dialog, so do not re-grab game focus.
-        options.add(new MenuOption(getString(R.string.game_menu_local_cursor_size), () -> {
-            hideMenu();
-            showLocalCursorSizeDialog();
-        }));
         if (device != null) {
             options.addAll(device.getGameMenuOptions());
         }
@@ -355,77 +349,6 @@ public class GameMenu implements Game.GameMenuCallbacks {
         builder.show();
     }
 
-    // Mirrors the StreamSettings SeekBarPreference for the client-side cursor size:
-    // stored as integer percent (50-300 => 0.5x-3.0x of the base sprite), step 10,
-    // divisor 100 — the same pattern as the cursor speed dialog above, writing the
-    // same persisted key so both menus always show one shared value.
-    private void showLocalCursorSizeDialog() {
-        final int min = PreferenceConfiguration.LOCAL_CURSOR_SIZE_MIN;
-        final int max = PreferenceConfiguration.LOCAL_CURSOR_SIZE_MAX;
-        final int step = PreferenceConfiguration.LOCAL_CURSOR_SIZE_STEP;
-        final int divisor = 100;
-        final int current = game.getLocalCursorSizePercent();
-
-        int themeResId = game.getApplicationInfo().theme;
-        Context themedContext = new ContextThemeWrapper(dialogScreenContext, themeResId);
-
-        LinearLayout layout = new LinearLayout(themedContext);
-        layout.setOrientation(LinearLayout.VERTICAL);
-        layout.setPadding(6, 6, 6, 6);
-
-        final TextView valueText = new TextView(themedContext);
-        valueText.setGravity(android.view.Gravity.CENTER_HORIZONTAL);
-        valueText.setTextSize(32);
-        valueText.setText(formatSpeedLabel(current, divisor));
-        layout.addView(valueText);
-
-        final SeekBar seekBar = new SeekBar(themedContext);
-        seekBar.setMax(max - min);
-        seekBar.setKeyProgressIncrement(step);
-        seekBar.setProgress(current - min);
-
-        seekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
-            @Override
-            public void onProgressChanged(SeekBar sb, int progress, boolean fromUser) {
-                int value = progress + min;
-                if (value < min) {
-                    sb.setProgress(0);
-                    value = min;
-                }
-                int rounded = Math.round((float) value / step) * step;
-                if (rounded != value) {
-                    sb.setProgress(rounded - min);
-                }
-                valueText.setText(formatSpeedLabel(Math.max(rounded, min), divisor));
-            }
-
-            @Override
-            public void onStartTrackingTouch(SeekBar sb) {}
-
-            @Override
-            public void onStopTrackingTouch(SeekBar sb) {}
-        });
-
-        layout.addView(seekBar, new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
-
-        AlertDialog.Builder builder = new AlertDialog.Builder(themedContext);
-        builder.setTitle(getString(R.string.title_local_cursor_size));
-        builder.setView(layout);
-        builder.setPositiveButton(android.R.string.ok, (dialog, which) -> {
-            int value = seekBar.getProgress() + min;
-            int rounded = Math.round((float) value / step) * step;
-            if (rounded < min) {
-                rounded = min;
-            } else if (rounded > max) {
-                rounded = max;
-            }
-            game.applyLocalCursorSizePercent(rounded);
-        });
-        builder.setNegativeButton(getString(R.string.cancel), (dialog, which) -> dialog.dismiss());
-        builder.show();
-    }
-
     private static String formatSpeedLabel(int hundredths, int divisor) {
         return String.format(java.util.Locale.US, "%.1f", hundredths / (float) divisor).concat(" x");
     }
@@ -478,16 +401,6 @@ public class GameMenu implements Game.GameMenuCallbacks {
 
         options.add(new MenuOption(getString(game.isZoomModeEnabled() ? R.string.game_menu_disable_zoom_mode : R.string.game_menu_enable_zoom_mode), true,
                 game::toggleZoomMode));
-
-        // Client-side (local) cursor enable/disable toggle with live On/Off state.
-        // Shares the exact implementation with the Ctrl+Alt+Shift+V shortcut.
-        // withGameFocus=true matches the other capture-related toggles: enabling
-        // re-arms pointer capture against the focused game window, so the action
-        // must run once focus has returned from this dialog. Disabling only hides
-        // the local sprite, so deferral is harmless for both directions.
-        options.add(new MenuOption(getString(R.string.game_menu_local_cursor) + ": " +
-                        getString(game.isLocalCursorEnabled() ? R.string.state_on : R.string.state_off),
-                true, game::toggleLocalCursorFromMenu));
 
         if (dialogScreenContext == game) {
             options.add(new MenuOption(getString(R.string.game_menu_rotate_screen), true,

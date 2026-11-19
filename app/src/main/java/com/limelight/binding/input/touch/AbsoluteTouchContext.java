@@ -267,11 +267,6 @@ public class AbsoluteTouchContext implements TouchContext {
     }
 
     @Override
-    public void cancelMomentum() {
-        // Absolute touch mode never schedules momentum motion after touch up.
-    }
-
-    @Override
     public void setPointerCount(int pointerCount) {
         if (actionIndex == 0 && pointerCount > 1) {
             cancelTouch();
